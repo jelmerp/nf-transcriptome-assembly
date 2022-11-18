@@ -372,7 +372,8 @@ process TRINITY {
         -i ${dir_with_all_fqs} \
         -o trinity_norm${norm} \
         --min_contig_length ${params.min_contig_length} \
-        --normalize ${norm}
+        --normalize ${norm} \
+        --strandedness ${params.strandedness}
     
     cp .command.log trinity_out/logs/slurm.log
     """
@@ -396,7 +397,8 @@ process TRINITY_GUIDED {
         -i ${bam} \
         -o trinity_out \
         --genome_guided \
-        --genome_guided_max_intron 250000
+        --genome_guided_max_intron 250000 \
+        --strandedness ${params.strandedness}
     
     cp .command.log trinity_out/logs/slurm-${sample_id}.log
     """
@@ -423,7 +425,8 @@ process TRANSABYSS {
         -o . \
         --id transabyss_norm${norm}_k${kmer_size} \
         --min_contig_length ${params.min_contig_length} \
-        --kmer_size ${kmer_size}
+        --kmer_size ${kmer_size} \
+        --strandedness ${params.strandedness}
     
     cp .command.log logs/slurm.log
     """
@@ -446,11 +449,179 @@ process SPADES {
     script:
     """
     spades.sh \
-        -i ${dir_with_all_fqs} \
-        -o spades_norm${norm}_k${kmer_size} \
+        --indir ${dir_with_all_fqs} \
+        --outdir spades_norm${norm}_k${kmer_size} \
         --mode rna \
-        --kmer_size ${kmer_size}
+        --kmer_size ${kmer_size} \
+        --strandedness ${params.strandedness}
     
+    cp .command.log logs/slurm.log
+    """
+}
+
+process CONCAT_ASSEMBLIES {
+    tag "Concatenate all assemblies into a single FASTA file"
+    publishDir "${params.outdir}/concat_assemblies", mode: 'copy'
+
+    input:
+    x
+
+    output:
+    path "concat_assembly.fasta", emit: assembly
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    x
+    """
+}
+
+process EVIGENE {
+    tag "Merge all assemblies into a single FASTA file"
+    publishDir "${params.outdir}/merged_assembly", mode: 'copy'
+
+    input:
+    path concat_assembly
+
+    output:
+    path "final/evigene_all.fasta", emit: assembly_all
+    path "final/evigene_primarytrans", emit: assembly_primarytrans
+    path "final/okayset", emit: okayset
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    evigene.sh -i ${concat_assembly} -o .
+
+    cp .command.log logs/slurm.log
+    """
+}
+
+process BUSCO {
+    tag "Evaluate an assembly with Busco"
+    publishDir "${params.outdir}/busco", mode: 'copy'
+
+    input:
+    path assembly
+
+    output:
+    path "XX", emit: out
+    path "logs/slurm*log", emit: log
+    
+    //TODO Need to save with assembly ID - runs for each assembly
+
+    script:
+    """
+    busco.sh -i ${assembly} -d ${params.busco_db} -o .
+
+    cp .command.log logs/slurm.log
+    """
+}
+
+process RNAQUAST {
+    tag "Evaluate an assembly with RNAQuast"
+    publishDir "${params.outdir}/rnaquast", mode: 'copy'
+
+    input:
+    path assembly
+
+    output:
+    path "XX", emit: out
+    path "logs/slurm*log", emit: log
+    
+    //TODO Run for all assemblies at once?
+
+    script:
+    """
+    rnaquast.sh -i ${assembly} -o .
+
+    cp .command.log logs/slurm.log
+    """
+}
+
+process DETONATE {
+    tag "Evaluate an assembly with Detonate"
+    publishDir "${params.outdir}/detonate", mode: 'copy'
+
+    input:
+    path assembly
+    path dir_with_all_fqs
+    //TODO Make sure to get FASTQs that were used for the assembly...
+
+    output:
+    path "XX", emit: out
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    detonate.sh -i ${assembly} -I ${dir_with_all_fqs} -o .
+
+    cp .command.log logs/slurm.log
+    """
+}
+
+//process ENTAP_CONFIG {
+//}
+
+process ENTAP {
+    tag "Annotate an assembly with EnTap"
+    publishDir "${params.outdir}/entap", mode: 'copy'
+
+    input:
+    path assembly
+    path refseq_db
+    path uniprot_db
+    path entap_config
+
+    output:
+    path "XX", emit: out
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    dbs="$refseq_db $uniprot_db"
+
+    entap.sh -i ${assembly} -d \${dbs} -c ${config} -o .
+
+    cp .command.log logs/slurm.log
+    """
+}
+
+process KALLISTO_INDEX {
+    tag "Index the final transcriptome assembly with Kallisto"
+    publishDir "${params.outdir}/kallisto_index", mode: 'copy'
+
+    input:
+    path merged_assembly
+
+    output:
+    path "assembly.idx", emit: index
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    kallisto_index.sh -i ${merged_assembly} -o assembly.idx
+
+    cp .command.log logs/slurm.log
+    """
+}
+
+process KALLISTO {
+    tag "Index the final transcriptome assembly with Kallisto"
+    publishDir "${params.outdir}/kallisto_index", mode: 'copy'
+
+    input:
+    tuple val(sample_id), path(fq_pair)
+    path assembly_index
+
+    output:
+    path "assembly.idx", emit: index
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    kallisto_quant.sh -i ${fq_pair[0]} -r ${assembly_index} -o .
+
     cp .command.log logs/slurm.log
     """
 }

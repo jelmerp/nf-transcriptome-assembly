@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --nodes=1
@@ -25,7 +25,7 @@ Print_help() {
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  -q/--fq-pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
-    echo "  -n/--nf-file    <file>  Nextflow workflow definition file                       [default: 'workflows/tram/main.nf']"
+    echo "  -n/--nf-file    <file>  Nextflow workflow definition file                       [default: 'workflows/nf-transcriptome-assembly/main.nf']"
     echo "  -no-resume              Don't attempt to resume workflow run, but start over    [default: resume]"
     echo "  -profile        <str>   Profile from any of the config files to use             [default: 'conda,normal']"
     echo "  --more-args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
@@ -111,7 +111,7 @@ osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present
 fq_pattern='*_R{1,2}*.fastq.gz'
 container_dir=/fs/project/PAS0471/containers
 work_dir=/fs/scratch/PAS0471/$USER/nf_tram
-nf_file="workflows/tram/main.nf"
+nf_file="workflows/nf-transcriptome-assembly/main.nf"
 profile="conda,normal"
 resume=true && resume_arg="-resume"
 
@@ -234,6 +234,9 @@ ${e}mkdir -p "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 
 ## Run the workflow
 echo -e "# Starting the workflow...\n"
+
+[[ "$dryrun" = false ]] && set -o xtrace
+
 ${e}Time nextflow run \
         "$nf_file" \
         --reads "$indir/$fq_pattern" \
@@ -248,6 +251,8 @@ ${e}Time nextflow run \
         $config_arg \
         $resume_arg \
         $more_args
+
+[[ "$debug" = false ]] && set +o xtrace
 
 #TODO - Don't need report files, with config?
 #TODO process local process in workflow

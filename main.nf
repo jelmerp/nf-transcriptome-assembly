@@ -10,16 +10,18 @@ def helpMessage() {
     REQUIRED OPTIONS:
         --reads             <str>   Single-quoted stirng with path to input dir + glob to match FASTQ files
                                     E.g. 'data/fastq/*_R{1,2}.fastq.gz'
+        --busco_db          <str>   Busco Database name
     
     OTHER OPTIONS:
         --outdir            <dir>   Final output dir for workflow results               [default: 'results/nf_tram']
         --ref_fasta         <file>  Reference FASTA file for Trinity genome-guided assembly [default: unset]
-        --trim_nextseq              Use TrimGalore/Cutadat's 'nextseq' option for poly-G trimming [default: unset]
-        --min_contig_length <int>   Minimum contig length                               [default: 300]
+        --trim_nextseq              Use TrimGalore/Cutadapt's 'nextseq' option for poly-G trimming [default: don't use]
+        --nfiles_rcorr      <int>   Number of files to run rcorrector with at a time    [default: 20 (=10 PE samples)]
+        --strandedness      <str>   'reverse', 'forward', or 'unstranded'               [default: 'reverse']
+        --min_contig_length <int>   Minimum contig length (TransAbyss and Trinity)      [default: 300]
         --k_vals_transabyss <str>   Comma-separated list of kmer-values for TransAbyss
         --k_vals_spades     <str>   Comma-separated list of kmer-values for SPAdes
         --kraken_db         <dir>   Path to a Kraken database                           [default: '/fs/project/PAS0471/jelmer/refdata/kraken/std-plus-fungi']
-        --nfiles_rcorr      <int>   Number of files to run rcorrector with at a time    [default: 20 (=10 PE samples)]
         --subset_fastq      <int>   Subset the FASTQ files to <int> reads               [default: no subsetting]
 
     UTILITY OPTIONS
@@ -42,8 +44,10 @@ for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true
 
 n_reads = params.subset_fastq
 k_vals_abyss = params.k_vals_abyss
+k_vals_spades = params.k_vals_spades
 
-//TODO Procces kvals list https://github.com/nextflow-io/nextflow/discussions/2821
+// Hardcoded parameters
+norms = [ 'true', 'false']    // Run assemblies with normalized and non-normalized data
 
 // Run info
 log.info ""
@@ -67,8 +71,11 @@ include { ORNA; JOIN_ORNA; JOIN_KRAKEN } from './modules/all_mods'
 include { INDEX_GENOME; MAP2GENOME } from './modules/all_mods'
 include { TRINITY ; TRINITY_GUIDED } from './modules/all_mods'
 include { TRANSABYSS as TRANSABYSS_NORM; TRANSABYSS as TRANSABYSS_NONORM } from './modules/all_mods'
-//include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_mods'
-
+include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_mods'
+//include { CONCAT_ASSEMBLIES; EVIGENE } from './modules/all_mods'
+//include { TRINITY_STATS; BUSCO; RNAQUAST; DETONATE } from './modules/all_mods'
+//include { ENTAP_CONFIG; ENTAP } from './modules/all_mods'
+//include { KALLISTO_INDEX; KALLISTO } from './modules/all_mods'
 
 // Workflow
 workflow {
@@ -121,18 +128,16 @@ workflow {
     // ======================================================================= //
     //                              ASSEMBLY
     // ======================================================================= //
-    norms = [ 'true', 'false']
-
     // Get channels with all preprocessed FASTQ files in one dir
     normreads_ch = JOIN_ORNA(orna_ch.fq.collect())
     nonormreads_ch = JOIN_KRAKEN(kraken_ch.fq_list.collect())
 
     // Reference-guided Trinity
-    //if (params.ref_fasta != false) {
-    //    index_ch = INDEX_GENOME(ref_ch)
-    //    bam_ch = MAP2GENOME(ref_ch, kraken_ch.fq_unclassified)
-    //    trinity_gg_ch = TRINITY_GUIDED(bam_ch.bam)
-    //}
+    if (params.ref_fasta != false) {
+        index_ch = INDEX_GENOME(ref_ch)
+        bam_ch = MAP2GENOME(ref_ch, kraken_ch.fq)
+        trinity_gg_ch = TRINITY_GUIDED(bam_ch.bam)
+    }
 
     // De novo Trinity
     trinity_nonorm_ch = TRINITY(nonormreads_ch, norms)
@@ -142,8 +147,26 @@ workflow {
     transabyss_nonorm_ch = TRANSABYSS_NONORM(nonormreads_ch, k_vals_abyss, "false")
 
     // SPAdes
-    //spades_norm_ch = SPADES_NORM(normreads_ch, k_vals_spades, "true")
-    //spades_nonorm_ch = SPADES_NONORM(nonormreads_ch, k_vals_spades, "true")
+    spades_norm_ch = SPADES_NORM(normreads_ch, k_vals_spades, "true")
+    spades_nonorm_ch = SPADES_NONORM(nonormreads_ch, k_vals_spades, "true")
+
+    // Merge assemblies
+    // concat_asm_ch = CONCAT_ASSEMBLIES()
+    // evigene_ch = EVIGENE(concat_asm_ch)
+
+    // QC assemblies
+    //TRINITY_STATS()
+    //BUSCO()
+    //RNAQUAST()
+    //DETONATE()
+
+    // Annotation
+    // ENTAP_CONFIG()
+    // ENTAP(evigene_ch.assembly_primarytrans)
+
+    // Quantification
+    // kallisto_idx_ch = KALLISTO_INDEX(evigene_ch)
+    // KALLISTO(kraken_ch, kallisto_idx_ch)
 }
 
 // Report completion/failure of workflow
