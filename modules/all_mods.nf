@@ -432,6 +432,8 @@ process TRANSABYSS {
         --kmer_size ${kmer_size} \
         --strandedness ${params.strandedness}
     
+    mv -v transabyss_norm${norm}_k${kmer_size}-final.fa transabyss_norm${norm}_k${kmer_size}.fasta
+
     cp .command.log logs/slurm.log
     """
 }
@@ -470,7 +472,12 @@ process CONCAT_ASSEMBLIES {
     publishDir "${params.outdir}/concat_assemblies", mode: 'copy'
 
     input:
-    x
+    path trinity_gg
+    path trinity
+    path transabyss_norm
+    path transabyss_nonorm
+    path spades_norm
+    path spades_nonorm
 
     output:
     path "concat_assembly.fasta", emit: assembly
@@ -478,7 +485,12 @@ process CONCAT_ASSEMBLIES {
     
     script:
     """
-    x
+    concat_assemblies.sh -o . \
+        ${trinity_gg} ${trinity} \
+        ${transabyss_norm} ${transabyss_nonorm} \
+        ${spades_norm} ${spades_nonorm}
+
+    cp .command.log logs/slurm.log
     """
 }
 
@@ -566,24 +578,82 @@ process DETONATE {
     """
 }
 
+process DOWNLOAD_REFSEQ {
+    tag "Download an NCBI RefSeq database"
+    publishDir "${params.outdir}/dbs/refseq", mode: 'copy'
+
+    input:
+    val refseq_type
+
+    output:
+    path "refseq_*.fasta", emit: fasta
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    wget ftp://ftp.ncbi.nlm.nih.gov/refseq/release/${refseq_type}/*protein*faa.gz
+    cat complete* | gunzip -c > refseq_${refseq_type}.fasta
+
+    mkdir logs
+    cp .command.log logs/slurm.log
+    """
+}
+
+process DOWNLOAD_NR {
+    tag "Download the NCBI NR database"
+    publishDir "${params.outdir}/dbs/nr", mode: 'copy'
+
+    output:
+    path "nr_database.fasta", emit: fasta
+    path "logs/slurm*log", emit: log
+
+    script:
+    """
+    wget ftp://ftp.ncbi.nlm.nih.gov/blast/db/nr.*.tar.gz
+    tar -xvzf nr.*
+    cat nr.* > nr_database.fasta
+
+    mkdir logs
+    cp .command.log logs/slurm.log
+    """
+}
+
+process DOWNLOAD_SWISSPROT {
+    tag "Download the SwissProt database"
+    publishDir "${params.outdir}/dbs/swissprot", mode: 'copy'
+
+    output:
+    path "uniprot_sprot.fasta", emit: fasta
+    path "logs/slurm*log", emit: log
+
+    script:
+    """
+    wget ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+    gunzip uniprot_sprot.fasta.gz
+
+    mkdir logs
+    cp .command.log logs/slurm.log
+    """
+}
+
 process ENTAP_CONFIG {
     tag "Configure EnTap"
     publishDir "${params.outdir}/entap", mode: 'copy'
 
     input:
     path refseq_db
-    path uniprot_db
+    path nr_db
+    path swissprot_db
     path entap_config
 
     output:
-    path "XX", emit: prepped_dbs
-    path "logs/slurm*log", emit: log
+    path "db_dir", emit: db_dir
     
     script:
     """
-    dbs="$refseq_db $uniprot_db"
+    dbs="$refseq_db $nr_db $uniprot_db"
 
-    entap_config.sh -d \${dbs} -c ${config} -o .
+    entap_config.sh -d "\${dbs}" -c ${config} -o db_dir
 
     cp .command.log logs/slurm.log
     """
@@ -595,9 +665,8 @@ process ENTAP {
 
     input:
     path assembly
-    path refseq_db
-    path uniprot_db
-    path entap_config
+    path db_dir
+    path config
 
     output:
     path "XX", emit: out
@@ -605,9 +674,7 @@ process ENTAP {
     
     script:
     """
-    dbs="$refseq_db $uniprot_db"
-
-    entap.sh -i ${assembly} -d \${dbs} -c ${config} -o .
+    entap.sh -i ${assembly} -d ${db_dir} -c ${config} -o .
 
     cp .command.log logs/slurm.log
     """
