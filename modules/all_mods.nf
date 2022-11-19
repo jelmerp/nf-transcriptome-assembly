@@ -362,19 +362,21 @@ process TRINITY {
     each norm
 
     output:
-    path "trinity_norm*/Trinity.fasta", emit: assembly
-    path "trinity_norm*/logs/slurm*log", emit: log
-    path "trinity_norm*/logs/version.txt", emit: version
+    path "trinity_out/Trinity.fasta", emit: assembly
+    path "trinity_out/logs/slurm*log", emit: log
+    path "trinity_out/logs/version.txt", emit: version
     
     script:
     """
     trinity.sh \
         -i ${dir_with_all_fqs} \
-        -o trinity_norm${norm} \
+        -o trinity_out \
         --min_contig_length ${params.min_contig_length} \
         --normalize ${norm} \
         --strandedness ${params.strandedness}
     
+    mv -v Trinity.fasta trinity_norm${norm}.fasta
+
     cp .command.log trinity_out/logs/slurm.log
     """
 }
@@ -387,7 +389,7 @@ process TRINITY_GUIDED {
     path bam
 
     output:
-    path "trinity_out/Trinity.fasta", emit: assembly
+    path "trinity_out/trinity_gg.fasta", emit: assembly
     path "trinity_out/logs/slurm*log", emit: log
     path "trinity_out/logs/version.txt", emit: version
     
@@ -400,6 +402,8 @@ process TRINITY_GUIDED {
         --genome_guided_max_intron 250000 \
         --strandedness ${params.strandedness}
     
+    mv -v Trinity.fasta trinity_gg.fasta
+
     cp .command.log trinity_out/logs/slurm-${sample_id}.log
     """
 }
@@ -442,7 +446,7 @@ process SPADES {
     val norm
 
     output:
-    path "*transcripts.fasta", emit: assembly
+    path "spades_*.fasta", emit: assembly
     path "logs/slurm*log", emit: log
     path "logs/version.txt", emit: version
     
@@ -450,11 +454,13 @@ process SPADES {
     """
     spades.sh \
         --indir ${dir_with_all_fqs} \
-        --outdir spades_norm${norm}_k${kmer_size} \
+        --outdir . \
         --mode rna \
         --kmer_size ${kmer_size} \
         --strandedness ${params.strandedness}
     
+    mv transcripts.fasta spades_norm${norm}_k${kmer_size}.fasta
+
     cp .command.log logs/slurm.log
     """
 }
@@ -560,8 +566,28 @@ process DETONATE {
     """
 }
 
-//process ENTAP_CONFIG {
-//}
+process ENTAP_CONFIG {
+    tag "Configure EnTap"
+    publishDir "${params.outdir}/entap", mode: 'copy'
+
+    input:
+    path refseq_db
+    path uniprot_db
+    path entap_config
+
+    output:
+    path "XX", emit: prepped_dbs
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    dbs="$refseq_db $uniprot_db"
+
+    entap_config.sh -d \${dbs} -c ${config} -o .
+
+    cp .command.log logs/slurm.log
+    """
+}
 
 process ENTAP {
     tag "Annotate an assembly with EnTap"

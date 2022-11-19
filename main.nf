@@ -14,6 +14,7 @@ def helpMessage() {
     
     OTHER OPTIONS:
         --outdir            <dir>   Final output dir for workflow results               [default: 'results/nf_tram']
+        --subset_fastq      <int>   Subset the FASTQ files to <int> reads               [default: no subsetting]
         --ref_fasta         <file>  Reference FASTA file for Trinity genome-guided assembly [default: unset]
         --trim_nextseq              Use TrimGalore/Cutadapt's 'nextseq' option for poly-G trimming [default: don't use]
         --nfiles_rcorr      <int>   Number of files to run rcorrector with at a time    [default: 20 (=10 PE samples)]
@@ -22,8 +23,7 @@ def helpMessage() {
         --k_vals_transabyss <str>   Comma-separated list of kmer-values for TransAbyss
         --k_vals_spades     <str>   Comma-separated list of kmer-values for SPAdes
         --kraken_db         <dir>   Path to a Kraken database                           [default: '/fs/project/PAS0471/jelmer/refdata/kraken/std-plus-fungi']
-        --subset_fastq      <int>   Subset the FASTQ files to <int> reads               [default: no subsetting]
-
+        --entap_config      <file>  EnTAP Config file
     UTILITY OPTIONS
         --help                      Print this help message and exit
     """.stripIndent()
@@ -161,8 +161,8 @@ workflow {
     //DETONATE()
 
     // Annotation
-    // ENTAP_CONFIG()
-    // ENTAP(evigene_ch.assembly_primarytrans)
+    // ENTAP_CONFIG(params.entap_config)
+    // ENTAP(evigene_ch.assembly_primarytrans, params.entap_config)
 
     // Quantification
     // kallisto_idx_ch = KALLISTO_INDEX(evigene_ch)
