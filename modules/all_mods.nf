@@ -5,7 +5,7 @@ process SUBSET_FASTQ {
 
     input:
     tuple val(sample_id), path(fq_pair)
-    val(n_reads)
+    val n_reads
 
     output:
     tuple val(sample_id), path("out/*fastq.gz"), emit: fq 
@@ -46,7 +46,7 @@ process MULTIQC_RAW {
     publishDir "${params.outdir}/multiqc", mode: 'copy'
 
     input:
-    path(all_logs)
+    path all_logs
 
     output:
     path "*html", emit: report
@@ -66,7 +66,7 @@ process MULTIQC_TRIM {
     publishDir "${params.outdir}/multiqc", mode: 'copy'
 
     input:
-    path(all_logs)
+    path all_logs
 
     output:
     path "*html", emit: report
@@ -86,7 +86,7 @@ process MULTIQC_PRE {
     publishDir "${params.outdir}/multiqc", mode: 'copy'
 
     input:
-    path(all_logs)
+    path all_logs
 
     output:
     path "*html", emit: report
@@ -333,28 +333,28 @@ process INDEX_GENOME {
 }
 
 process MAP2GENOME {
-    tag "Map reads to a reference genome"
+    tag "Map reads to a reference genome for $sample_id"
     publishDir "${params.outdir}/map2genome", mode: 'copy'
 
     input:
-    path ref_fasta
     tuple val(sample_id), path(fq_pair)
+    path ref_index
 
     output:
-    path "mapped/*bam", emit: bam
+    path "bam/*bam", emit: bam
     path "logs/slurm*log", emit: log
     path "logs/version.txt", emit: version
     
     script:
     """
-    star_align.sh -i ${fq_pair[0]} -r ${ref_fasta} -o .
+    star_align.sh -i ${fq_pair[0]} -r ${ref_index} -o .
     
     cp .command.log logs/slurm.log
     """
 }
 
 process TRINITY {
-    tag "Transcriptome assembly with Trinity"
+    tag "Assembly with Trinity - normalization $norm"
     publishDir "${params.outdir}/trinity", mode: 'copy'
 
     input:
@@ -362,7 +362,7 @@ process TRINITY {
     each norm
 
     output:
-    path "trinity_out/Trinity.fasta", emit: assembly
+    path "trinity_out/trinity_norm*fasta", emit: assembly
     path "trinity_out/logs/slurm*log", emit: log
     path "trinity_out/logs/version.txt", emit: version
     
@@ -382,7 +382,7 @@ process TRINITY {
 }
 
 process TRINITY_GUIDED {
-    tag "Transcriptome assembly with Trinity (genome-guided)"
+    tag "Assembly with Trinity (genome-guided)"
     publishDir "${params.outdir}/trinity_guided", mode: 'copy'
 
     input:
@@ -404,12 +404,12 @@ process TRINITY_GUIDED {
     
     mv -v Trinity.fasta trinity_gg.fasta
 
-    cp .command.log trinity_out/logs/slurm-${sample_id}.log
+    cp .command.log trinity_out/logs/slurm.log
     """
 }
 
 process TRANSABYSS {
-    tag "Transcriptome assembly with Trans-ABySS"
+    tag "Assembly with Trans-ABySS - kmer $kmer_size - normalization $norm"
     publishDir "${params.outdir}/transabyss", mode: 'copy'
 
     input:
@@ -418,7 +418,7 @@ process TRANSABYSS {
     val norm
 
     output:
-    path "*final.fa", emit: assembly
+    path "transabyss_norm*.fasta", emit: assembly
     path "logs/slurm*log", emit: log
     path "logs/version.txt", emit: version
     
@@ -439,7 +439,7 @@ process TRANSABYSS {
 }
 
 process SPADES {
-    tag "Transcriptome assembly with SPADES"
+    tag "Assembly with SPADES - kmer $kmer_size - normalization $norm"
     publishDir "${params.outdir}/spades", mode: 'copy'
 
     input:
@@ -448,7 +448,7 @@ process SPADES {
     val norm
 
     output:
-    path "spades_*.fasta", emit: assembly
+    path "spades_norm*.fasta", emit: assembly
     path "logs/slurm*log", emit: log
     path "logs/version.txt", emit: version
     
@@ -472,12 +472,7 @@ process CONCAT_ASSEMBLIES {
     publishDir "${params.outdir}/concat_assemblies", mode: 'copy'
 
     input:
-    path trinity_gg
-    path trinity
-    path transabyss_norm
-    path transabyss_nonorm
-    path spades_norm
-    path spades_nonorm
+    path assemblies
 
     output:
     path "concat_assembly.fasta", emit: assembly
@@ -485,10 +480,7 @@ process CONCAT_ASSEMBLIES {
     
     script:
     """
-    concat_assemblies.sh -o . \
-        ${trinity_gg} ${trinity} \
-        ${transabyss_norm} ${transabyss_nonorm} \
-        ${spades_norm} ${spades_nonorm}
+    concat_assemblies.sh -o concat_assembly.fasta ${assemblies}
 
     cp .command.log logs/slurm.log
     """
@@ -502,8 +494,8 @@ process EVIGENE {
     path concat_assembly
 
     output:
-    path "final/evigene_all.fasta", emit: assembly_all
-    path "final/evigene_primarytrans", emit: assembly_primarytrans
+    path "final/evigene_all.fasta", emit: all
+    path "final/evigene_primarytrans", emit: primarytrans
     path "final/okayset", emit: okayset
     path "logs/slurm*log", emit: log
     
@@ -521,16 +513,15 @@ process BUSCO {
 
     input:
     path assembly
+    val busco_db
 
     output:
-    path "XX", emit: out
+    path "*{txt,tsv}", emit: out
     path "logs/slurm*log", emit: log
     
-    //TODO Need to save with assembly ID - runs for each assembly
-
     script:
     """
-    busco.sh -i ${assembly} -d ${params.busco_db} -o .
+    busco.sh -i ${assembly} -d ${busco_db} -o .
 
     cp .command.log logs/slurm.log
     """
@@ -544,11 +535,9 @@ process RNAQUAST {
     path assembly
 
     output:
-    path "XX", emit: out
+    path "*report*", emit: out
     path "logs/slurm*log", emit: log
     
-    //TODO Run for all assemblies at once?
-
     script:
     """
     rnaquast.sh -i ${assembly} -o .
@@ -559,22 +548,20 @@ process RNAQUAST {
 
 process DETONATE {
     tag "Evaluate an assembly with Detonate"
-    publishDir "${params.outdir}/detonate", mode: 'copy'
+    publishDir "${params.outdir}", mode: 'copy'
 
     input:
     path assembly
     path dir_with_all_fqs
-    //TODO Make sure to get FASTQs that were used for the assembly...
 
     output:
-    path "XX", emit: out
-    path "logs/slurm*log", emit: log
+    path "detonate", emit: out
     
     script:
     """
-    detonate.sh -i ${assembly} -I ${dir_with_all_fqs} -o .
+    detonate.sh -i ${assembly} -I ${dir_with_all_fqs} -o detonate
 
-    cp .command.log logs/slurm.log
+    cp .command.log detonate/logs/slurm.log
     """
 }
 
@@ -610,7 +597,11 @@ process DOWNLOAD_NR {
     script:
     """
     wget ftp://ftp.ncbi.nlm.nih.gov/blast/db/nr.*.tar.gz
-    tar -xvzf nr.*
+    
+    for archive in nr.*tar.gz; do
+        tar -xvzf \$archive
+    done
+
     cat nr.* > nr_database.fasta
 
     mkdir logs
@@ -641,19 +632,15 @@ process ENTAP_CONFIG {
     publishDir "${params.outdir}/entap", mode: 'copy'
 
     input:
-    path refseq_db
-    path nr_db
-    path swissprot_db
-    path entap_config
+    path dbs
 
     output:
     path "db_dir", emit: db_dir
+    path "entap_config.ini", emit: config
     
     script:
     """
-    dbs="$refseq_db $nr_db $uniprot_db"
-
-    entap_config.sh -d "\${dbs}" -c ${config} -o db_dir
+    entap_config.sh -c entap_config.ini -o db_dir ${dbs}
 
     cp .command.log logs/slurm.log
     """
@@ -661,22 +648,48 @@ process ENTAP_CONFIG {
 
 process ENTAP {
     tag "Annotate an assembly with EnTap"
-    publishDir "${params.outdir}/entap", mode: 'copy'
+    publishDir "${params.outdir}", mode: 'copy'
 
     input:
     path assembly
-    path db_dir
     path config
+    path db_dir
 
     output:
-    path "XX", emit: out
+    path "entap", emit: out
     path "logs/slurm*log", emit: log
     
     script:
     """
-    entap.sh -i ${assembly} -d ${db_dir} -c ${config} -o .
+    entap.sh -i ${assembly} -d ${db_dir} -c ${config} -o entap
 
-    cp .command.log logs/slurm.log
+    cp .command.log entap/logs/slurm.log
+    """
+}
+
+process ENTAP_PROCESS {
+    tag "Post-processing of EnTap output"
+    publishDir "${params.outdir}", mode: 'copy'
+
+    input:
+    path entap_out
+    path assembly_1trans
+    path assembly_alltrans
+
+    output:
+    path "entap_ed", emit: out
+    path "entap_ed/assembly.fasta", emit: assembly
+    path "logs/slurm*log", emit: log
+    
+    script:
+    """
+    entap_process.sh \
+        --entap_dir ${entap_out} \
+        --in_1trans ${assembly_1trans} \
+        --in_alltrans ${assembly_alltrans} \
+        --outdir entap_ed
+
+    cp .command.log entap_ed/logs/slurm.log
     """
 }
 
@@ -700,15 +713,17 @@ process KALLISTO_INDEX {
 }
 
 process KALLISTO {
-    tag "Index the final transcriptome assembly with Kallisto"
-    publishDir "${params.outdir}/kallisto_index", mode: 'copy'
+    tag "Quantify read counts with Kallisto for $sample_id"
+    publishDir "${params.outdir}/kallisto", mode: 'copy'
 
     input:
     tuple val(sample_id), path(fq_pair)
     path assembly_index
 
     output:
-    path "assembly.idx", emit: index
+    path "abundance*h5", emit: counts_h5
+    path "abundance*tsv", emit: counts_tsv
+    path "run_info.json", emit: info
     path "logs/slurm*log", emit: log
     
     script:

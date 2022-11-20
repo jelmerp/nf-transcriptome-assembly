@@ -17,6 +17,7 @@ def helpMessage() {
         --outdir                <dir>   Final output dir for workflow results               [default: 'results/nf_tram']
         --subset_fastq          <int>   Subset the FASTQ files to <int> reads               [default: no subsetting]
         --ref_fasta             <file>  Reference FASTA file for Trinity genome-guided assembly [default: unset]
+        --ref_index             <dir>   STAR index dir for the '--ref_fasta' reference      [default: none => create index]
         --trim_nextseq                  Use TrimGalore/Cutadapt's 'nextseq' option for poly-G trimming [default: don't use]
         --nfiles_rcorr          <int>   Number of files to run rcorrector with at a time    [default: 20 (=10 PE samples)]
         --strandedness          <str>   'reverse', 'forward', or 'unstranded'               [default: 'reverse']
@@ -44,6 +45,7 @@ if (params.help) {
 // Process parameters
 if (!params.reads) { exit 1, '\n============\nERROR: Input reads not specified! Use "--reads" to do so\n============\n' }
 if (!params.outdir) { exit 1, '\n============\nERROR: Output dir not specified! Use "--outdir" to do so\n============\n' }
+if (!params.busco_db) { exit 1, '\n============\nERROR: Busco db name not specified! Use "--busco_db" to do so\n============\n' }
 //TODO Add to this
 
 def checkPathParamList = [ params.reads ]
@@ -52,7 +54,7 @@ for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true
 n_reads = params.subset_fastq
 k_abyss = params.k_abyss
 k_spades = params.k_spades
-refseq_type = params.entap_refseq_db_type
+refseq_type = params.entap_refseq_type
 refseq_db = params.entap_refseq_db
 nr_db = params.entap_nr_db
 swissprot_db = params.entap_swissprot_db
@@ -83,11 +85,11 @@ include { INDEX_GENOME; MAP2GENOME } from './modules/all_mods'
 include { TRINITY ; TRINITY_GUIDED } from './modules/all_mods'
 include { TRANSABYSS as TRANSABYSS_NORM; TRANSABYSS as TRANSABYSS_NONORM } from './modules/all_mods'
 include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_mods'
-//include { CONCAT_ASSEMBLIES; EVIGENE } from './modules/all_mods'
-//include { TRINITY_STATS; BUSCO; RNAQUAST; DETONATE } from './modules/all_mods'
-//include { DOWNLOAD_REFSEQ; DOWNLOAD_NR; DOWNLOAD_SWISSPROT} from './modules/all_mods'
-//include { ENTAP_CONFIG; ENTAP } from './modules/all_mods'
-//include { KALLISTO_INDEX; KALLISTO } from './modules/all_mods'
+include { CONCAT_ASSEMBLIES; EVIGENE } from './modules/all_mods'
+include { BUSCO; RNAQUAST; DETONATE } from './modules/all_mods'
+include { DOWNLOAD_REFSEQ; DOWNLOAD_NR; DOWNLOAD_SWISSPROT} from './modules/all_mods'
+include { ENTAP_CONFIG; ENTAP; ENTAP_PROCESS } from './modules/all_mods'
+include { KALLISTO_INDEX; KALLISTO } from './modules/all_mods'
 
 // Workflow
 workflow {
@@ -146,9 +148,14 @@ workflow {
 
     // Reference-guided Trinity
     if (params.ref_fasta != false) {
-        index_ch = INDEX_GENOME(ref_ch)
-        bam_ch = MAP2GENOME(ref_ch, kraken_ch.fq)
-        trinity_gg_ch = TRINITY_GUIDED(bam_ch.bam)
+        if (params.ref_index == false) {
+            index_ch = INDEX_GENOME(ref_ch).index
+        } else {
+            index_ch = Channel.fromPath(params.ref_index)
+        }
+        kraken_ch.fq.view() //TODO fix
+        bam_ch = MAP2GENOME(kraken_ch.fq, index_ch)
+        trinity_gg_ch = TRINITY_GUIDED(bam_ch.bam.collect())
     } else {
         trinity_gg_ch = Channel.empty()
     }
@@ -165,47 +172,51 @@ workflow {
     spades_nonorm_ch = SPADES_NONORM(nonormreads_ch, k_spades, "false")
 
     // Merge assemblies
-    // concat_asm_ch = CONCAT_ASSEMBLIES(trinity_gg_ch, trinity_ch, transabyss_norm_ch, transabyss_nonorm_ch, spades_norm_ch, spades_nonorm_ch)
-    // evigene_ch = EVIGENE(concat_asm_ch)
+    all_asm_ch = trinity_gg_ch.assembly
+        .mix(trinity_ch.assembly, transabyss_norm_ch.assembly, transabyss_nonorm_ch.assembly, spades_norm_ch.assembly, spades_nonorm_ch.assembly)
+        .collect()
+    concat_asm_ch = CONCAT_ASSEMBLIES(all_asm_ch)
+    evigene_ch = EVIGENE(concat_asm_ch.assembly)
 
     // ======================================================================= //
     //                           ASSEMBLY QC
     // ======================================================================= //
-    //TRINITY_STATS(evigene_ch)
-    //BUSCO(evigene_ch_primarytrans, params.busco_db)
-    //RNAQUAST(evigene_ch)
-    //DETONATE(evigene_ch)
-    //TRANSRATE(evigene_ch)
+    BUSCO(evigene_ch.primarytrans, params.busco_db)
+    RNAQUAST(evigene_ch.all)
+    DETONATE(evigene_ch.all, nonormreads_ch)
 
     // ======================================================================= //
     //                           ANNOTATION
     // ======================================================================= //
-    /*
-    if (refseq_db = false) {
+    if (refseq_db == false) {
         refseq_ch = DOWNLOAD_REFSEQ(refseq_type)
     } else {
         refseq_ch = Channel.fromPath(refseq_db) 
     }
-    if (nr_db = false) {
+    if (nr_db == false) {
         nr_ch = DOWNLOAD_NR()
     } else {
         nr_ch = Channel.fromPath(nr_db) 
     }
-    if (swissprot_db = false) {
+    if (swissprot_db == false) {
         swissprot_ch = DOWNLOAD_SWISSPROT()
     } else {
         swissprot_ch = Channel.fromPath(swissprot_db) 
     }
-    */
-    
-    // entap_dbs_ch = ENTAP_CONFIG(params.entap_config, refseq_ch, nr_ch, swissprot_ch)
-    // ENTAP(evigene_ch.assembly_primarytrans, params.entap_config, entap_dbs_ch)
+
+    ref_dbs_ch = refseq_ch.fasta
+        .mix(nr_ch.fasta, swissprot_ch.fasta)
+        .collect()
+
+    entap_dbs_ch = ENTAP_CONFIG(ref_dbs_ch)
+    entap_ch = ENTAP(evigene_ch.primarytrans, params.entap_config, entap_dbs_ch.db_dir)
+    entap_ed_ch = ENTAP_PROCESS(entap_ch.out, evigene_ch.primarytrans, evigene_ch.all)
 
     // ======================================================================= //
     //                           QUANTIFICATION
     // ======================================================================= //
-    // kallisto_idx_ch = KALLISTO_INDEX(evigene_ch)
-    // KALLISTO(kraken_ch, kallisto_idx_ch)
+    kallisto_idx_ch = KALLISTO_INDEX(evigene_ch.all)
+    KALLISTO(kraken_ch.fq, kallisto_idx_ch.index)
 }
 
 // Report completion/failure of workflow
