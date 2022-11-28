@@ -353,6 +353,26 @@ process MAP2GENOME {
     """
 }
 
+process MERGE_BAM {
+    tag "Merge BAM files for genome-guided assembly"
+    publishDir "${params.outdir}/map2genome", mode: 'copy'
+
+    input:
+    path bamfiles
+
+    output:
+    path "merged.bam", emit: bam
+    path "logs/slurm*log", emit: log
+    path "logs/*_version.txt", emit: version
+    
+    script:
+    """
+    merge_bam.sh -o merged.bam ${bamfiles}
+    
+    cp .command.log logs/slurm-merge.log
+    """
+}
+
 process TRINITY {
     tag "Assembly with Trinity - normalization $norm"
     publishDir "${params.outdir}/trinity", mode: 'copy'
@@ -363,6 +383,7 @@ process TRINITY {
 
     output:
     path "trinity_out/trinity_norm*fasta", emit: assembly
+    path "trinity_out/trinity_norm*gene_trans_map", emit: gene2trans
     path "trinity_out/logs/slurm*log", emit: log
     path "trinity_out/logs/version.txt", emit: version
     
@@ -375,7 +396,8 @@ process TRINITY {
         --normalize ${norm} \
         --strandedness ${params.strandedness}
     
-    mv -v Trinity.fasta trinity_norm${norm}.fasta
+    mv -v trinity_out.Trinity.fasta trinity_out/trinity_norm${norm}.fasta
+    mv -v trinity_out.Trinity.fasta.gene_trans_map trinity_out/trinity_norm${norm}.gene_trans_map
 
     cp .command.log trinity_out/logs/slurm.log
     """
@@ -390,6 +412,7 @@ process TRINITY_GUIDED {
 
     output:
     path "trinity_out/trinity_gg.fasta", emit: assembly
+    path "trinity_out/trinity_gg.gene_trans_map", emit: gene2trans
     path "trinity_out/logs/slurm*log", emit: log
     path "trinity_out/logs/version.txt", emit: version
     
@@ -402,7 +425,8 @@ process TRINITY_GUIDED {
         --genome_guided_max_intron 250000 \
         --strandedness ${params.strandedness}
     
-    mv -v Trinity.fasta trinity_gg.fasta
+    mv -v trinity_out.Trinity.fasta trinity_out/trinity_gg.fasta
+    mv -v trinity_out.Trinity.fasta.gene_trans_map trinity_out/trinity_gg.gene_trans_map
 
     cp .command.log trinity_out/logs/slurm.log
     """
@@ -601,6 +625,7 @@ process DOWNLOAD_NR {
     """
 }
 
+//TODO - Can probably remove
 process DOWNLOAD_SWISSPROT {
     tag "Download the SwissProt database"
     publishDir "${params.outdir}/dbs/swissprot", mode: 'copy'
@@ -615,6 +640,7 @@ process DOWNLOAD_SWISSPROT {
     """
 }
 
+//TODO - Can probably remove
 process DOWNLOAD_EGGNOG_SQL {
     tag "Download the EggNOG SQL database"
     publishDir "${params.outdir}/dbs/eggnog", mode: 'copy'
@@ -629,6 +655,7 @@ process DOWNLOAD_EGGNOG_SQL {
     """
 }
 
+//TODO - Can probably remove
 process DOWNLOAD_EGGNOG_DIAMOND {
     tag "Download the EggNOG DIAMOND database"
     publishDir "${params.outdir}/dbs/eggnog", mode: 'copy'
@@ -652,10 +679,8 @@ process ENTAP_CONFIG {
     publishDir "${params.outdir}/entap", mode: 'copy'
 
     input:
-    path config
     path protein_dbs
-    path eggnog_sql
-    path eggnog_diamond
+    path config_in
 
     output:
     path "db_dir", emit: db_dir
@@ -663,9 +688,13 @@ process ENTAP_CONFIG {
     
     script:
     """
-    entap_config.sh -c ${config} -o db_dir ${protein_dbs}
+    entap_config.sh \
+        --config_in ${config_in} \
+        --config_out entap_config.ini \
+        --db_dir db_dir \
+        ${protein_dbs}
 
-    cp .command.log logs/slurm.log
+    cp .command.log db_dir/logs/slurm.log
     """
 }
 
@@ -675,8 +704,8 @@ process ENTAP {
 
     input:
     path assembly
-    path config
     path db_dir
+    path config
 
     output:
     path "entap", emit: out
@@ -684,7 +713,11 @@ process ENTAP {
     
     script:
     """
-    entap.sh -i ${assembly} -d ${db_dir} -c ${config} -o entap
+    entap.sh \
+        --assembly ${assembly} \
+        --db_dir ${db_dir} \
+        --config ${config} \
+        --outdir entap
 
     cp .command.log entap/logs/slurm.log
     """

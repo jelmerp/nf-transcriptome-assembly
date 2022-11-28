@@ -11,7 +11,9 @@ def helpMessage() {
         --reads                 <str>   Single-quoted stirng with path to input dir + glob to match FASTQ files
                                             E.g. 'data/fastq/*_R{1,2}.fastq.gz'
         --busco_db              <str>   Busco Database name
-        --entap_config          <file>  EnTAP Config file
+        --entap_taxon           <file>  Taxon name for EnTAP
+        --entap_contam          <file>  Comma-separated list of contaminants for for EnTAP
+
     
     OTHER OPTIONS:
         --outdir                <dir>   Final output dir for workflow results               [default: 'results/nf_tram']
@@ -25,6 +27,10 @@ def helpMessage() {
         --k_transabyss          <str>   Comma-separated list of kmer-values for TransAbyss
         --k_spades              <str>   Comma-separated list of kmer-values for SPAdes
         --kraken_db             <dir>   Path to a Kraken database                           [default: '/fs/project/PAS0471/jelmer/refdata/kraken/std-plus-fungi']
+        --entap_qcov            <int>   Min. query coverage for similarity searching        [default: 50]
+        --entap_tcov            <int>   Min. target coverage for similarity searching       [default: 50] 
+        --entap_eval            <int>   Evalue cutoff for similarity searching              [default: 1e-5]  
+        --entap_fpkm            <num>   FPKM threshold                                      [default: 0.5] 
         --entap_refseq_db_type  <str>   NCBI RefSeq DB type                                 [default: 'complete']
                                             Options: 'complete', 'plant', 'vertebrate_mammalian', 'vertebrate_other', 'invertebrate'
         --entap_refseq_db       <file>  FASTA file with already downloaded RefSeq DB        [default: none]
@@ -81,7 +87,7 @@ include { RCORRECTOR; RCORRFILTER } from './modules/all_mods'
 include { SORTMERNA } from './modules/all_mods'
 include { KRAKEN; KRONA } from './modules/all_mods'
 include { ORNA; JOIN_ORNA; JOIN_KRAKEN } from './modules/all_mods'
-include { INDEX_GENOME; MAP2GENOME } from './modules/all_mods'
+include { INDEX_GENOME; MAP2GENOME; MERGE_BAM } from './modules/all_mods'
 include { TRINITY ; TRINITY_GUIDED } from './modules/all_mods'
 include { TRANSABYSS as TRANSABYSS_NORM; TRANSABYSS as TRANSABYSS_NONORM } from './modules/all_mods'
 include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_mods'
@@ -151,10 +157,11 @@ workflow {
         if (params.ref_index == false) {
             index_ch = INDEX_GENOME(ref_ch).index
         } else {
-            index_ch = Channel.value(params.ref_index) //! NOTE: Channel.fromPath() doesn't work here - won't recycle
+            index_ch = Channel.value(params.ref_index) // NOTE: Channel.fromPath() doesn't work here - won't recycle
         }
         bam_ch = MAP2GENOME(kraken_ch.fq, index_ch)
-        trinity_gg_ch = TRINITY_GUIDED(bam_ch.bam.collect()).assembly
+        bam_merged_ch = MERGE_BAM(bam_ch.bam.collect())
+        trinity_gg_ch = TRINITY_GUIDED(bam_merged_ch.bam).assembly
     } else {
         trinity_gg_ch = Channel.empty()
     }
@@ -203,6 +210,9 @@ workflow {
     } else {
         nr_ch = Channel.fromPath(nr_db) 
     }
+    ref_dbs_fa_ch = refseq_ch.mix(nr_ch).collect()
+
+    /*
     if (swissprot_db == false) {
         swissprot_ch = DOWNLOAD_SWISSPROT()
     } else {
@@ -212,12 +222,11 @@ workflow {
     
     eggnog_sql_ch = DOWNLOAD_EGGNOG_SQL()
     eggnog_diamond_ch = DOWNLOAD_EGGNOG_DIAMOND()
-
-    /*
-    entap_dbs_ch = ENTAP_CONFIG(params.entap_config, ref_dbs_ch)
-    entap_ch = ENTAP(evigene_ch.primarytrans, params.entap_config, entap_dbs_ch.db_dir, eggnog_sql_ch, eggnog_diamond_ch)
-    entap_ed_ch = ENTAP_PROCESS(entap_ch.out, evigene_ch.primarytrans, evigene_ch.all)
     */
+
+    entap_config_ch = ENTAP_CONFIG(ref_dbs_fa_ch, params.entap_config)
+    entap_ch = ENTAP(evigene_ch.primarytrans, entap_config_ch.db_dir, entap_config_ch.config)
+    entap_ed_ch = ENTAP_PROCESS(entap_ch.out, evigene_ch.primarytrans, evigene_ch.all)
 }
 
 // Report completion/failure of workflow

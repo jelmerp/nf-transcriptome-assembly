@@ -23,18 +23,20 @@ Print_help() {
     echo "  -i/--indir      <dir>   Input dir with FASTQ files"
     echo "  -o/--outdir     <dir>   Output directory for workflow results"
     echo "  --busco-db      <str>   BUSCO database name (see https://busco.ezlab.org/list_of_lineages.html)"
+    echo "  --taxon         <str>   #TODO"
+    echo "  --contam        <str>   #TODO"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -n/--nf-file    <file>  Nextflow workflow definition file                       [default: 'workflows/nf-transcriptome-assembly/main.nf']"
     echo "  -q/--fq-pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
     echo "  --ref-fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
     echo "  --trim-nextseq          Use NextSeq/NovaSeq polyG-trimming TrimGalore option    [default: don't use]"
     echo "  --subset-fastq  <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
-    echo "  -no-resume              Don't attempt to resume workflow run, but start over    [default: resume]"
-    echo "  -profile        <str>   Profile from any of the config files to use             [default: 'conda,normal']"
     echo "  --more-args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
     echo
-    echo "ADDITIONAL OPTIONS:"
+    echo "NEXTFLOW-RELATED OPTIONS:"
+    echo "  -n/--nf-file    <file>  Nextflow workflow definition file                       [default: 'workflows/nf-transcriptome-assembly/main.nf']"
+    echo "  -no-resume              Don't attempt to resume workflow run, but start over    [default: resume]"
+    echo "  -profile        <str>   Profile from any of the config files to use             [default: 'conda,normal']"
     echo "  --container-dir <dir>   Singularity container dir                               [default: '/fs/project/PAS0471/containers']"
     echo "                            - This is where any containers used in the workflow will be downloaded to"
     echo "  -work-dir       <dir>   Scratch (work) dir for the workflow                     [default: '/fs/scratch/PAS0471/$USER/nf_tram']"
@@ -132,6 +134,8 @@ slurm=true
 indir=""
 outdir=""
 busco_db=""
+taxon=""
+contam=""
 config_file="" && config_arg=""
 more_args=""
 work_dir_arg=""
@@ -147,6 +151,8 @@ while [ "$1" != "" ]; do
         -o | --outdir )         shift && outdir=$1 ;;
         -n | --nf_file )        shift && nf_file=$1 ;;
         --busco-db )            shift && busco_db=$1 ;;
+        --taxon )               shift && taxon=$1 ;;
+        --contam )              shift && contam=$1 ;;
         --ref-fasta )           shift && ref_fasta=$1 ;;
         --trim-nextseq )        trim_nextseq=true ;;
         --subset-fastq )        shift && subset_fastq=$1 ;;
@@ -221,21 +227,25 @@ echo "==========================================================================
 echo "                         STARTING SCRIPT NF_TRAM.SH"
 date
 echo "=========================================================================="
+echo "RUN OPTIONS:"
 echo "Input dir:                       $indir"
 echo "FASTQ pattern:                   $fq_pattern"
 echo "Output dir:                      $outdir"
 echo "BUSCO database:                  $busco_db"
-echo "Work (scratch) dir:              $work_dir"
-echo "Resume previous run:             $resume"
-echo
-echo "Nextflow workflow file:          $nf_file"
-echo "Container dir:                   $container_dir"
-echo "Config 'profile':                $profile"
 echo "NextSeq/NovaSeq polyG-trimming:  $trim_nextseq"
+echo "Taxon name:                      $taxon"
+echo "Contaminant taxa:                $contam"
 [[ "$ref_fasta" != "" ]] && echo "Reference genome FASTA:          $ref_fasta"
 [[ "$subset_fastq" != "" ]] && echo "Nr. of reads to subset FASTQ to: $subset_fastq"
-[[ "$config_file" != "" ]] && echo "Additional config file:          $config_file"
 [[ "$more_args" != "" ]] && echo "Additional arguments:            $more_args"
+echo
+echo "NEXTFLOW-RELATED OPTIONS:"
+echo "Resume previous run:             $resume"
+echo "Nextflow workflow file:          $nf_file"
+echo "Work (scratch) dir:              $work_dir"
+echo "Container dir:                   $container_dir"
+echo "Config 'profile':                $profile"
+[[ "$config_file" != "" ]] && echo "Additional config file:          $config_file"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
@@ -262,6 +272,8 @@ ${e}Time nextflow run \
         --reads "$indir/$fq_pattern" \
         --outdir "$outdir" \
         --busco_db "$busco_db" \
+        --taxon "$taxon" \
+        --taxon "$contam" \
         -work-dir "$work_dir" \
         -ansi-log false \
         -with-report "$trace_dir"/report.html \
@@ -279,7 +291,6 @@ ${e}Time nextflow run \
 [[ "$debug" = false ]] && set +o xtrace
 
 #TODO - Don't need report files, with config?
-#TODO process local process in workflow
 
 
 # ==============================================================================
