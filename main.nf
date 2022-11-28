@@ -87,7 +87,7 @@ include { TRANSABYSS as TRANSABYSS_NORM; TRANSABYSS as TRANSABYSS_NONORM } from 
 include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_mods'
 include { CONCAT_ASSEMBLIES; EVIGENE } from './modules/all_mods'
 include { BUSCO; RNAQUAST; DETONATE } from './modules/all_mods'
-include { DOWNLOAD_REFSEQ; DOWNLOAD_NR; DOWNLOAD_SWISSPROT} from './modules/all_mods'
+include { DOWNLOAD_REFSEQ; DOWNLOAD_NR; DOWNLOAD_SWISSPROT; DOWNLOAD_EGGNOG_SQL; DOWNLOAD_EGGNOG_DIAMOND} from './modules/all_mods'
 include { ENTAP_CONFIG; ENTAP; ENTAP_PROCESS } from './modules/all_mods'
 include { KALLISTO_INDEX; KALLISTO } from './modules/all_mods'
 
@@ -151,29 +151,28 @@ workflow {
         if (params.ref_index == false) {
             index_ch = INDEX_GENOME(ref_ch).index
         } else {
-            index_ch = Channel.fromPath(params.ref_index)
+            index_ch = Channel.value(params.ref_index) //! NOTE: Channel.fromPath() doesn't work here - won't recycle
         }
-        kraken_ch.fq.view() //TODO fix
         bam_ch = MAP2GENOME(kraken_ch.fq, index_ch)
-        trinity_gg_ch = TRINITY_GUIDED(bam_ch.bam.collect())
+        trinity_gg_ch = TRINITY_GUIDED(bam_ch.bam.collect()).assembly
     } else {
         trinity_gg_ch = Channel.empty()
     }
 
     // De novo Trinity
-    trinity_ch = TRINITY(nonormreads_ch, norms)
+    trinity_ch = TRINITY(nonormreads_ch, norms).assembly
 
     // Trans-abyss
-    transabyss_norm_ch = TRANSABYSS_NORM(normreads_ch, k_abyss, "true")
-    transabyss_nonorm_ch = TRANSABYSS_NONORM(nonormreads_ch, k_abyss, "false")
+    transabyss_norm_ch = TRANSABYSS_NORM(normreads_ch, k_abyss, "true").assembly
+    transabyss_nonorm_ch = TRANSABYSS_NONORM(nonormreads_ch, k_abyss, "false").assembly
 
     // SPAdes
-    spades_norm_ch = SPADES_NORM(normreads_ch, k_spades, "true")
-    spades_nonorm_ch = SPADES_NONORM(nonormreads_ch, k_spades, "false")
+    spades_norm_ch = SPADES_NORM(normreads_ch, k_spades, "true").assembly
+    spades_nonorm_ch = SPADES_NONORM(nonormreads_ch, k_spades, "false").assembly
 
     // Merge assemblies
-    all_asm_ch = trinity_gg_ch.assembly
-        .mix(trinity_ch.assembly, transabyss_norm_ch.assembly, transabyss_nonorm_ch.assembly, spades_norm_ch.assembly, spades_nonorm_ch.assembly)
+    all_asm_ch = trinity_gg_ch
+        .mix(trinity_ch, transabyss_norm_ch, transabyss_nonorm_ch, spades_norm_ch, spades_nonorm_ch)
         .collect()
     concat_asm_ch = CONCAT_ASSEMBLIES(all_asm_ch)
     evigene_ch = EVIGENE(concat_asm_ch.assembly)
@@ -186,8 +185,14 @@ workflow {
     DETONATE(evigene_ch.all, nonormreads_ch)
 
     // ======================================================================= //
-    //                           ANNOTATION
+    //                           QUANTIFICATION
     // ======================================================================= //
+    kallisto_idx_ch = KALLISTO_INDEX(evigene_ch.all)
+    KALLISTO(kraken_ch.fq, kallisto_idx_ch.index)
+    
+    // ======================================================================= //
+    //                           ANNOTATION
+    // ======================================================================= //\
     if (refseq_db == false) {
         refseq_ch = DOWNLOAD_REFSEQ(refseq_type)
     } else {
@@ -203,20 +208,16 @@ workflow {
     } else {
         swissprot_ch = Channel.fromPath(swissprot_db) 
     }
+    ref_dbs_ch = refseq_ch.mix(nr_ch, swissprot_ch).collect()
+    
+    eggnog_sql_ch = DOWNLOAD_EGGNOG_SQL()
+    eggnog_diamond_ch = DOWNLOAD_EGGNOG_DIAMOND()
 
-    ref_dbs_ch = refseq_ch.fasta
-        .mix(nr_ch.fasta, swissprot_ch.fasta)
-        .collect()
-
-    entap_dbs_ch = ENTAP_CONFIG(ref_dbs_ch)
-    entap_ch = ENTAP(evigene_ch.primarytrans, params.entap_config, entap_dbs_ch.db_dir)
+    /*
+    entap_dbs_ch = ENTAP_CONFIG(params.entap_config, ref_dbs_ch)
+    entap_ch = ENTAP(evigene_ch.primarytrans, params.entap_config, entap_dbs_ch.db_dir, eggnog_sql_ch, eggnog_diamond_ch)
     entap_ed_ch = ENTAP_PROCESS(entap_ch.out, evigene_ch.primarytrans, evigene_ch.all)
-
-    // ======================================================================= //
-    //                           QUANTIFICATION
-    // ======================================================================= //
-    kallisto_idx_ch = KALLISTO_INDEX(evigene_ch.all)
-    KALLISTO(kraken_ch.fq, kallisto_idx_ch.index)
+    */
 }
 
 // Report completion/failure of workflow

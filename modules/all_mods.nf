@@ -540,7 +540,7 @@ process RNAQUAST {
     
     script:
     """
-    rnaquast.sh -i ${assembly} -o .
+    rnaquast.sh -i ${assembly} -o . --strandedness ${params.strandedness}
 
     cp .command.log logs/slurm.log
     """
@@ -573,16 +573,12 @@ process DOWNLOAD_REFSEQ {
     val refseq_type
 
     output:
-    path "refseq_*.fasta", emit: fasta
-    path "logs/slurm*log", emit: log
+    path "refseq_*.fasta"
     
     script:
     """
     wget ftp://ftp.ncbi.nlm.nih.gov/refseq/release/${refseq_type}/*protein*faa.gz
     cat complete* | gunzip -c > refseq_${refseq_type}.fasta
-
-    mkdir logs
-    cp .command.log logs/slurm.log
     """
 }
 
@@ -591,8 +587,7 @@ process DOWNLOAD_NR {
     publishDir "${params.outdir}/dbs/nr", mode: 'copy'
 
     output:
-    path "nr_database.fasta", emit: fasta
-    path "logs/slurm*log", emit: log
+    path "nr_database.fasta"
 
     script:
     """
@@ -603,9 +598,6 @@ process DOWNLOAD_NR {
     done
 
     cat nr.* > nr_database.fasta
-
-    mkdir logs
-    cp .command.log logs/slurm.log
     """
 }
 
@@ -614,16 +606,44 @@ process DOWNLOAD_SWISSPROT {
     publishDir "${params.outdir}/dbs/swissprot", mode: 'copy'
 
     output:
-    path "uniprot_sprot.fasta", emit: fasta
-    path "logs/slurm*log", emit: log
+    path "uniprot_sprot.fasta"
 
     script:
     """
     wget ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
     gunzip uniprot_sprot.fasta.gz
+    """
+}
 
-    mkdir logs
-    cp .command.log logs/slurm.log
+process DOWNLOAD_EGGNOG_SQL {
+    tag "Download the EggNOG SQL database"
+    publishDir "${params.outdir}/dbs/eggnog", mode: 'copy'
+
+    output:
+    path "eggnog.db"
+
+    script:
+    """
+    wget http://eggnog5.embl.de/download/eggnog_4.1/eggnog-mapper-data/eggnog.db.gz
+    gunzip eggnog.db.gz
+    """
+}
+
+process DOWNLOAD_EGGNOG_DIAMOND {
+    tag "Download the EggNOG DIAMOND database"
+    publishDir "${params.outdir}/dbs/eggnog", mode: 'copy'
+
+    output:
+    path "eggnog_proteins.dmnd"
+
+    script:
+    """
+    wget http://eggnog5.embl.de/download/eggnog_4.1/eggnog-mapper-data/eggnog4.clustered_proteins.fa.gz
+
+    diamond makedb \
+        --threads ${task.cpus} \
+        --in eggnog4.clustered_proteins.fa.gz \
+        --db eggnog_proteins
     """
 }
 
@@ -632,7 +652,10 @@ process ENTAP_CONFIG {
     publishDir "${params.outdir}/entap", mode: 'copy'
 
     input:
-    path dbs
+    path config
+    path protein_dbs
+    path eggnog_sql
+    path eggnog_diamond
 
     output:
     path "db_dir", emit: db_dir
@@ -640,7 +663,7 @@ process ENTAP_CONFIG {
     
     script:
     """
-    entap_config.sh -c entap_config.ini -o db_dir ${dbs}
+    entap_config.sh -c ${config} -o db_dir ${protein_dbs}
 
     cp .command.log logs/slurm.log
     """

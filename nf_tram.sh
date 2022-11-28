@@ -21,11 +21,15 @@ Print_help() {
     echo "================================================================================"
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir      <dir>   Input dir with FASTQ files"
-    echo "  -o/--outdir     <dir>   Output directory for workflow results (will be created if needed)"
+    echo "  -o/--outdir     <dir>   Output directory for workflow results"
+    echo "  --busco-db      <str>   BUSCO database name (see https://busco.ezlab.org/list_of_lineages.html)"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  -q/--fq-pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
     echo "  -n/--nf-file    <file>  Nextflow workflow definition file                       [default: 'workflows/nf-transcriptome-assembly/main.nf']"
+    echo "  -q/--fq-pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
+    echo "  --ref-fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
+    echo "  --trim-nextseq          Use NextSeq/NovaSeq polyG-trimming TrimGalore option    [default: don't use]"
+    echo "  --subset-fastq  <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
     echo "  -no-resume              Don't attempt to resume workflow run, but start over    [default: resume]"
     echo "  -profile        <str>   Profile from any of the config files to use             [default: 'conda,normal']"
     echo "  --more-args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
@@ -114,6 +118,7 @@ work_dir=/fs/scratch/PAS0471/$USER/nf_tram
 nf_file="workflows/nf-transcriptome-assembly/main.nf"
 profile="conda,normal"
 resume=true && resume_arg="-resume"
+trim_nextseq=false && nextseq_arg=""
 
 debug=false
 dryrun=false && e=""
@@ -126,9 +131,12 @@ slurm=true
 ## Placeholder defaults
 indir=""
 outdir=""
+busco_db=""
 config_file="" && config_arg=""
 more_args=""
 work_dir_arg=""
+subset_fastq="" && subset_arg=""
+ref_fasta="" && ref_arg=""
 
 ## Parse command-line options
 all_args="$*"
@@ -138,6 +146,10 @@ while [ "$1" != "" ]; do
         -q | --fq-pattern )     shift && fq_pattern=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         -n | --nf_file )        shift && nf_file=$1 ;;
+        --busco-db )            shift && busco_db=$1 ;;
+        --ref-fasta )           shift && ref_fasta=$1 ;;
+        --trim-nextseq )        trim_nextseq=true ;;
+        --subset-fastq )        shift && subset_fastq=$1 ;;
         --container-dir )       shift && container_dir=$1 ;;
         --more-args )           shift && more_args=$1 ;;
         -config )               shift && config_file=$1 ;;
@@ -170,6 +182,7 @@ set -ueo pipefail
 ## Check input
 [[ "$indir" = "" ]] && Die "Please specify an input dir with -i" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an input dir with -o" "$all_args"
+[[ "$busco_db" = "" ]] && Die "Please specify an BUSCO db name with --busco_db" "$all_args"
 [[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 
 ## Get the OSC config file
@@ -177,6 +190,9 @@ if [[ ! -f "$osc_config" ]]; then
     [[ ! -f $(basename "$OSC_CONFIG_URL") ]] && wget -q "$OSC_CONFIG_URL"
     osc_config=$(basename "$OSC_CONFIG_URL")
 fi
+
+## Define trace output dir
+trace_dir="$outdir"/pipeline_info
 
 ## Build the config argument
 config_arg="-c $osc_config"
@@ -186,9 +202,9 @@ fi
 
 ## Build other Nextflow arguments
 [[ "$resume" = false ]] && resume_arg=""
-
-## Define trace output dir
-trace_dir="$outdir"/pipeline_info
+[[ "$subset_fastq" != "" ]] && subset_arg="--subset_fastq $subset_fastq"
+[[ "$trim_nextseq" = true ]] && nextseq_arg="--trim_nextseq"
+[[ "$ref_fasta" != "" ]] && ref_arg="--ref_fasta $ref_fasta"
 
 ## Work dir
 if [[ "$work_dir_arg" = "" ]]; then
@@ -208,12 +224,16 @@ echo "==========================================================================
 echo "Input dir:                       $indir"
 echo "FASTQ pattern:                   $fq_pattern"
 echo "Output dir:                      $outdir"
+echo "BUSCO database:                  $busco_db"
 echo "Work (scratch) dir:              $work_dir"
 echo "Resume previous run:             $resume"
 echo
 echo "Nextflow workflow file:          $nf_file"
 echo "Container dir:                   $container_dir"
 echo "Config 'profile':                $profile"
+echo "NextSeq/NovaSeq polyG-trimming:  $trim_nextseq"
+[[ "$ref_fasta" != "" ]] && echo "Reference genome FASTA:          $ref_fasta"
+[[ "$subset_fastq" != "" ]] && echo "Nr. of reads to subset FASTQ to: $subset_fastq"
 [[ "$config_file" != "" ]] && echo "Additional config file:          $config_file"
 [[ "$more_args" != "" ]] && echo "Additional arguments:            $more_args"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
@@ -241,6 +261,7 @@ ${e}Time nextflow run \
         "$nf_file" \
         --reads "$indir/$fq_pattern" \
         --outdir "$outdir" \
+        --busco_db "$busco_db" \
         -work-dir "$work_dir" \
         -ansi-log false \
         -with-report "$trace_dir"/report.html \
@@ -248,6 +269,9 @@ ${e}Time nextflow run \
         -with-timeline "$trace_dir"/timeline.html \
         -with-dag "$trace_dir"/dag.png \
         -profile "$profile" \
+        $nextseq_arg \
+        $ref_arg \
+        $subset_arg \
         $config_arg \
         $resume_arg \
         $more_args
