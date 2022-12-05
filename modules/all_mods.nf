@@ -164,8 +164,8 @@ process RCORRECTOR {
 
     rcorrector.sh -I fofn.txt -o .
     
-    mv fofn.txt fofn_\$subset_id.txt
-    cp .command.log logs/slurm-rcorrector.log
+    mv fofn.txt fofn_\${subset_id}.txt
+    cp .command.log logs/slurm-rcorrector_\${subset_id}.log
     """
 }
 
@@ -343,13 +343,14 @@ process MAP2GENOME {
     output:
     path "bam/*bam", emit: bam
     path "logs/slurm*log", emit: log
+    path "star_logs/*", emit: star_log
     path "logs/version.txt", emit: version
     
     script:
     """
     star_align.sh -i ${fq_pair[0]} -r ${ref_index} -o .
     
-    cp .command.log logs/slurm.log
+    cp .command.log logs/slurm-${sample_id}.log
     """
 }
 
@@ -425,8 +426,8 @@ process TRINITY_GUIDED {
         --genome_guided_max_intron 250000 \
         --strandedness ${params.strandedness}
     
-    mv -v trinity_out.Trinity.fasta trinity_out/trinity_gg.fasta
-    mv -v trinity_out.Trinity.fasta.gene_trans_map trinity_out/trinity_gg.gene_trans_map
+    mv -v trinity_out/Trinity-GG.fasta trinity_out/trinity_gg.fasta
+    mv -v trinity_out/Trinity-GG.fasta.gene_trans_map trinity_out/trinity_gg.gene_trans_map
 
     cp .command.log trinity_out/logs/slurm.log
     """
@@ -493,7 +494,7 @@ process SPADES {
 
 process CONCAT_ASSEMBLIES {
     tag "Concatenate all assemblies into a single FASTA file"
-    publishDir "${params.outdir}/concat_assemblies", mode: 'copy'
+    publishDir "${params.outdir}/concat_assembly", mode: 'copy'
 
     input:
     path assemblies
@@ -512,22 +513,22 @@ process CONCAT_ASSEMBLIES {
 
 process EVIGENE {
     tag "Merge all assemblies into a single FASTA file"
-    publishDir "${params.outdir}/merged_assembly", mode: 'copy'
+    publishDir "${params.outdir}/evigene", mode: 'copy'
 
     input:
     path concat_assembly
 
     output:
-    path "final/evigene_all.fasta", emit: all
-    path "final/evigene_primarytrans", emit: primarytrans
-    path "final/okayset", emit: okayset
-    path "logs/slurm*log", emit: log
+    path "out/final/evigene_all.fasta", emit: all
+    path "out/final/evigene_primarytrans.fasta", emit: primarytrans
+    path "out/okayset", emit: okayset
+    path "out/logs/slurm*log", emit: log
     
     script:
     """
-    evigene.sh -i ${concat_assembly} -o .
+    evigene.sh -i ${concat_assembly} -o out
 
-    cp .command.log logs/slurm.log
+    cp .command.log out/logs/slurm.log
     """
 }
 
@@ -540,7 +541,7 @@ process BUSCO {
     val busco_db
 
     output:
-    path "*{txt,tsv}", emit: out
+    path "*", emit: out
     path "logs/slurm*log", emit: log
     
     script:
@@ -564,7 +565,10 @@ process RNAQUAST {
     
     script:
     """
-    rnaquast.sh -i ${assembly} -o . --strandedness ${params.strandedness}
+    rnaquast.sh \
+        --assemblies ${assembly} \
+        --outdir . \
+        --strandedness ${params.strandedness}
 
     cp .command.log logs/slurm.log
     """
@@ -580,12 +584,40 @@ process DETONATE {
 
     output:
     path "detonate", emit: out
+    path "detonate/logs/slurm.log", emit: log
+    path "detonate/logs/version.txt", emit: version
     
     script:
     """
-    detonate.sh -i ${assembly} -I ${dir_with_all_fqs} -o detonate
+    detonate.sh \
+        --assembly ${assembly} \
+        --fq-dir ${dir_with_all_fqs} \
+        --outdir detonate
 
     cp .command.log detonate/logs/slurm.log
+    """
+}
+
+process MAP2TRANSCRIPTOME {
+    tag "Map the reads back to the transcriptome"
+
+    input:
+    path assembly
+    path dir_with_all_fqs
+
+    output:
+    path "map2trans.bam", emit: bam
+    path "logs/slurm.log", emit: log
+    path "logs/version.txt", emit: version
+    
+    script:
+    """
+    bowtie2.sh \
+        --assembly ${assembly} \
+        --fq-dir ${dir_with_all_fqs} \
+        --bam map2trans.bam
+
+    cp .command.log logs/slurm.log
     """
 }
 
@@ -625,62 +657,12 @@ process DOWNLOAD_NR {
     """
 }
 
-//TODO - Can probably remove
-process DOWNLOAD_SWISSPROT {
-    tag "Download the SwissProt database"
-    publishDir "${params.outdir}/dbs/swissprot", mode: 'copy'
-
-    output:
-    path "uniprot_sprot.fasta"
-
-    script:
-    """
-    wget ftp://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
-    gunzip uniprot_sprot.fasta.gz
-    """
-}
-
-//TODO - Can probably remove
-process DOWNLOAD_EGGNOG_SQL {
-    tag "Download the EggNOG SQL database"
-    publishDir "${params.outdir}/dbs/eggnog", mode: 'copy'
-
-    output:
-    path "eggnog.db"
-
-    script:
-    """
-    wget http://eggnog5.embl.de/download/eggnog_4.1/eggnog-mapper-data/eggnog.db.gz
-    gunzip eggnog.db.gz
-    """
-}
-
-//TODO - Can probably remove
-process DOWNLOAD_EGGNOG_DIAMOND {
-    tag "Download the EggNOG DIAMOND database"
-    publishDir "${params.outdir}/dbs/eggnog", mode: 'copy'
-
-    output:
-    path "eggnog_proteins.dmnd"
-
-    script:
-    """
-    wget http://eggnog5.embl.de/download/eggnog_4.1/eggnog-mapper-data/eggnog4.clustered_proteins.fa.gz
-
-    diamond makedb \
-        --threads ${task.cpus} \
-        --in eggnog4.clustered_proteins.fa.gz \
-        --db eggnog_proteins
-    """
-}
-
 process ENTAP_CONFIG {
     tag "Configure EnTap"
     publishDir "${params.outdir}/entap", mode: 'copy'
 
     input:
     path protein_dbs
-    path config_in
 
     output:
     path "db_dir", emit: db_dir
@@ -689,9 +671,10 @@ process ENTAP_CONFIG {
     script:
     """
     entap_config.sh \
-        --config_in ${config_in} \
         --config_out entap_config.ini \
         --db_dir db_dir \
+        --taxon ${params.entap_taxon} \
+        --contam ${params.entap_contam} \
         ${protein_dbs}
 
     cp .command.log db_dir/logs/slurm.log
@@ -706,6 +689,7 @@ process ENTAP {
     path assembly
     path db_dir
     path config
+    path bam
 
     output:
     path "entap", emit: out
@@ -715,8 +699,9 @@ process ENTAP {
     """
     entap.sh \
         --assembly ${assembly} \
-        --db_dir ${db_dir} \
+        --db-dir ${db_dir} \
         --config ${config} \
+        --bam ${bam} \
         --outdir entap
 
     cp .command.log entap/logs/slurm.log
@@ -740,9 +725,9 @@ process ENTAP_PROCESS {
     script:
     """
     entap_process.sh \
-        --entap_dir ${entap_out} \
-        --in_1trans ${assembly_1trans} \
-        --in_alltrans ${assembly_alltrans} \
+        --entap-dir ${entap_out} \
+        --in-1trans ${assembly_1trans} \
+        --in-alltrans ${assembly_alltrans} \
         --outdir entap_ed
 
     cp .command.log entap_ed/logs/slurm.log
@@ -777,15 +762,15 @@ process KALLISTO {
     path assembly_index
 
     output:
-    path "abundance*h5", emit: counts_h5
-    path "abundance*tsv", emit: counts_tsv
-    path "run_info.json", emit: info
-    path "logs/slurm*log", emit: log
+    path "${sample_id}/abundance*h5", emit: counts_h5
+    path "${sample_id}/abundance*tsv", emit: counts_tsv
+    path "${sample_id}/run_info.json", emit: info
+    path "${sample_id}/logs/slurm*log", emit: log
     
     script:
     """
-    kallisto_quant.sh -i ${fq_pair[0]} -r ${assembly_index} -o .
+    kallisto_quant.sh -i ${fq_pair[0]} -r ${assembly_index} -o ${sample_id}
 
-    cp .command.log logs/slurm.log
+    cp .command.log ${sample_id}/logs/slurm.log
     """
 }

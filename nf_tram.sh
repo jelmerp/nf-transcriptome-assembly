@@ -23,14 +23,16 @@ Print_help() {
     echo "  -i/--indir      <dir>   Input dir with FASTQ files"
     echo "  -o/--outdir     <dir>   Output directory for workflow results"
     echo "  --busco-db      <str>   BUSCO database name (see https://busco.ezlab.org/list_of_lineages.html)"
-    echo "  --taxon         <str>   #TODO"
-    echo "  --contam        <str>   #TODO"
+    echo "  --taxon         <str>   Taxon name for EnTAP, using format 'homo_sapiens' (underscores, no spaces)"
+    echo "  --contam        <str>   Comma-separated list of contaminant taxa for EnTAP (e.g., 'viruses,bacteria')"
     echo
-    echo "OTHER KEY OPTIONS:"
+    echo "OTHER INPUT DATA OPTIONS:"
     echo "  -q/--fq-pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
     echo "  --ref-fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
-    echo "  --trim-nextseq          Use NextSeq/NovaSeq polyG-trimming TrimGalore option    [default: don't use]"
     echo "  --subset-fastq  <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
+    echo
+    echo "OTHER KEY OPTIONS:"
+    echo "  --trim-nextseq          Use NextSeq/NovaSeq polyG-trimming TrimGalore option    [default: don't use]"
     echo "  --more-args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
@@ -189,6 +191,8 @@ set -ueo pipefail
 [[ "$indir" = "" ]] && Die "Please specify an input dir with -i" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an input dir with -o" "$all_args"
 [[ "$busco_db" = "" ]] && Die "Please specify an BUSCO db name with --busco_db" "$all_args"
+[[ "$taxon" = "" ]] && Die "Please specify a taxon name with --taxon" "$all_args"
+[[ "$contam" = "" ]] && Die "Please specify a list of contaminant taxa --contam" "$all_args"
 [[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 
 ## Get the OSC config file
@@ -227,25 +231,27 @@ echo "==========================================================================
 echo "                         STARTING SCRIPT NF_TRAM.SH"
 date
 echo "=========================================================================="
-echo "RUN OPTIONS:"
-echo "Input dir:                       $indir"
-echo "FASTQ pattern:                   $fq_pattern"
-echo "Output dir:                      $outdir"
-echo "BUSCO database:                  $busco_db"
-echo "NextSeq/NovaSeq polyG-trimming:  $trim_nextseq"
-echo "Taxon name:                      $taxon"
-echo "Contaminant taxa:                $contam"
-[[ "$ref_fasta" != "" ]] && echo "Reference genome FASTA:          $ref_fasta"
-[[ "$subset_fastq" != "" ]] && echo "Nr. of reads to subset FASTQ to: $subset_fastq"
-[[ "$more_args" != "" ]] && echo "Additional arguments:            $more_args"
+echo "INPUT/OUTPUT DATA OPTIONS:"
+echo "  Input dir:                       $indir"
+echo "  FASTQ pattern:                   $fq_pattern"
+echo "  Output dir:                      $outdir"
+[[ "$ref_fasta" != "" ]] && echo "  Reference genome FASTA:          $ref_fasta"
+[[ "$subset_fastq" != "" ]] && echo "  Nr. of reads to subset FASTQ to: $subset_fastq"
+echo
+echo "RUN SETTINGS:"
+echo "  BUSCO database:                  $busco_db"
+echo "  NextSeq/NovaSeq polyG-trimming:  $trim_nextseq"
+echo "  Taxon name:                      $taxon"
+echo "  Contaminant taxa:                $contam"
+[[ "$more_args" != "" ]] && echo "  Additional arguments:            $more_args"
 echo
 echo "NEXTFLOW-RELATED OPTIONS:"
-echo "Resume previous run:             $resume"
-echo "Nextflow workflow file:          $nf_file"
-echo "Work (scratch) dir:              $work_dir"
-echo "Container dir:                   $container_dir"
-echo "Config 'profile':                $profile"
-[[ "$config_file" != "" ]] && echo "Additional config file:          $config_file"
+echo "  Resume previous run:             $resume"
+echo "  Nextflow workflow file:          $nf_file"
+echo "  Work (scratch) dir:              $work_dir"
+echo "  Container dir:                   $container_dir"
+echo "  Config 'profile':                $profile"
+[[ "$config_file" != "" ]] && echo "  Additional config file:          $config_file"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
 echo
@@ -272,8 +278,8 @@ ${e}Time nextflow run \
         --reads "$indir/$fq_pattern" \
         --outdir "$outdir" \
         --busco_db "$busco_db" \
-        --taxon "$taxon" \
-        --taxon "$contam" \
+        --entap_taxon "$taxon" \
+        --entap_contam "$contam" \
         -work-dir "$work_dir" \
         -ansi-log false \
         -with-report "$trace_dir"/report.html \
@@ -289,8 +295,6 @@ ${e}Time nextflow run \
         $more_args
 
 [[ "$debug" = false ]] && set +o xtrace
-
-#TODO - Don't need report files, with config?
 
 
 # ==============================================================================

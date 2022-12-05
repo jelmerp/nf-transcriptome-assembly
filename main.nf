@@ -10,18 +10,19 @@ def helpMessage() {
     REQUIRED OPTIONS:
         --reads                 <str>   Single-quoted stirng with path to input dir + glob to match FASTQ files
                                             E.g. 'data/fastq/*_R{1,2}.fastq.gz'
-        --busco_db              <str>   Busco Database name
-        --entap_taxon           <file>  Taxon name for EnTAP
-        --entap_contam          <file>  Comma-separated list of contaminants for for EnTAP
+        --busco_db              <str>   Busco database name (see https://busco.ezlab.org/list_of_lineages.html)
+        --entap_taxon           <file>  Taxon name for EnTAP, using format 'homo_sapiens' (underscores, no spaces)
+        --entap_contam          <file>  Comma-separated list of contaminant taxa for EnTAP (e.g., 'viruses,bacteria')
 
-    
-    OTHER OPTIONS:
+    DATA I/O OPTIONS:
         --outdir                <dir>   Final output dir for workflow results               [default: 'results/nf_tram']
         --subset_fastq          <int>   Subset the FASTQ files to <int> reads               [default: no subsetting]
         --ref_fasta             <file>  Reference FASTA file for Trinity genome-guided assembly [default: unset]
         --ref_index             <dir>   STAR index dir for the '--ref_fasta' reference      [default: none => create index]
-        --trim_nextseq                  Use TrimGalore/Cutadapt's 'nextseq' option for poly-G trimming [default: don't use]
         --nfiles_rcorr          <int>   Number of files to run rcorrector with at a time    [default: 20 (=10 PE samples)]
+
+    SETTINGS:
+        --trim_nextseq                  Use TrimGalore/Cutadapt's 'nextseq' option for poly-G trimming [default: don't use]
         --strandedness          <str>   'reverse', 'forward', or 'unstranded'               [default: 'reverse']
         --min_contig_length     <int>   Minimum contig length (TransAbyss and Trinity)      [default: 300]
         --k_transabyss          <str>   Comma-separated list of kmer-values for TransAbyss
@@ -50,9 +51,9 @@ if (params.help) {
 
 // Process parameters
 if (!params.reads) { exit 1, '\n============\nERROR: Input reads not specified! Use "--reads" to do so\n============\n' }
-if (!params.outdir) { exit 1, '\n============\nERROR: Output dir not specified! Use "--outdir" to do so\n============\n' }
 if (!params.busco_db) { exit 1, '\n============\nERROR: Busco db name not specified! Use "--busco_db" to do so\n============\n' }
-//TODO Add to this
+if (!params.entap_taxon) { exit 1, '\n============\nERROR: Taxon name for EnTap not specified! Use "--entap_taxon" to do so\n============\n' }
+if (!params.entap_contam) { exit 1, '\n============\nERROR: Contaminant list for EnTap not specified! Use "--entap_contam" to do so\n============\n' }
 
 def checkPathParamList = [ params.reads ]
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
@@ -94,7 +95,7 @@ include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_m
 include { CONCAT_ASSEMBLIES; EVIGENE } from './modules/all_mods'
 include { BUSCO; RNAQUAST; DETONATE } from './modules/all_mods'
 include { DOWNLOAD_REFSEQ; DOWNLOAD_NR; DOWNLOAD_SWISSPROT; DOWNLOAD_EGGNOG_SQL; DOWNLOAD_EGGNOG_DIAMOND} from './modules/all_mods'
-include { ENTAP_CONFIG; ENTAP; ENTAP_PROCESS } from './modules/all_mods'
+include { MAP2TRANSCRIPTOME; ENTAP_CONFIG; ENTAP; ENTAP_PROCESS } from './modules/all_mods'
 include { KALLISTO_INDEX; KALLISTO } from './modules/all_mods'
 
 // Workflow
@@ -199,7 +200,9 @@ workflow {
     
     // ======================================================================= //
     //                           ANNOTATION
-    // ======================================================================= //\
+    // ======================================================================= //
+    map2trans_ch = MAP2TRANSCRIPTOME(evigene_ch.all, nonormreads_ch)
+
     if (refseq_db == false) {
         refseq_ch = DOWNLOAD_REFSEQ(refseq_type)
     } else {
@@ -212,20 +215,8 @@ workflow {
     }
     ref_dbs_fa_ch = refseq_ch.mix(nr_ch).collect()
 
-    /*
-    if (swissprot_db == false) {
-        swissprot_ch = DOWNLOAD_SWISSPROT()
-    } else {
-        swissprot_ch = Channel.fromPath(swissprot_db) 
-    }
-    ref_dbs_ch = refseq_ch.mix(nr_ch, swissprot_ch).collect()
-    
-    eggnog_sql_ch = DOWNLOAD_EGGNOG_SQL()
-    eggnog_diamond_ch = DOWNLOAD_EGGNOG_DIAMOND()
-    */
-
-    entap_config_ch = ENTAP_CONFIG(ref_dbs_fa_ch, params.entap_config)
-    entap_ch = ENTAP(evigene_ch.primarytrans, entap_config_ch.db_dir, entap_config_ch.config)
+    entap_conf_ch = ENTAP_CONFIG(ref_dbs_fa_ch)
+    entap_ch = ENTAP(evigene_ch.primarytrans, entap_conf_ch.db_dir, entap_conf_ch.config, map2trans_ch.bam)
     entap_ed_ch = ENTAP_PROCESS(entap_ch.out, evigene_ch.primarytrans, evigene_ch.all)
 }
 
