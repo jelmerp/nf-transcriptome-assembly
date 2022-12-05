@@ -1,3 +1,6 @@
+
+//include { DOWNLOAD_SWISSPROT; DOWNLOAD_EGGNOG_SQL; DOWNLOAD_EGGNOG_DIAMOND }
+
 WORKFLOW {
     if (swissprot_db == false) {
         swissprot_ch = DOWNLOAD_SWISSPROT()
