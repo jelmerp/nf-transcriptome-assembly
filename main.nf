@@ -59,11 +59,12 @@ def checkPathParamList = [ params.reads ]
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
 
 n_reads = params.subset_fastq
-k_abyss = params.k_abyss
+k_abyss = params.k_abyss?.split(',') as List // See https://github.com/nextflow-io/nextflow/discussions/2821
 k_spades = params.k_spades
 refseq_type = params.entap_refseq_type
 refseq_db = params.entap_refseq_db
 nr_db = params.entap_nr_db
+use_nr_db = params.entap_use_nr_db
 swissprot_db = params.entap_swissprot_db
 
 // Hardcoded parameters
@@ -94,7 +95,7 @@ include { TRANSABYSS as TRANSABYSS_NORM; TRANSABYSS as TRANSABYSS_NONORM } from 
 include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_mods'
 include { CONCAT_ASSEMBLIES; EVIGENE } from './modules/all_mods'
 include { BUSCO; RNAQUAST; DETONATE } from './modules/all_mods'
-include { DOWNLOAD_REFSEQ; DOWNLOAD_NR; DOWNLOAD_SWISSPROT; DOWNLOAD_EGGNOG_SQL; DOWNLOAD_EGGNOG_DIAMOND} from './modules/all_mods'
+include { DOWNLOAD_REFSEQ; DOWNLOAD_NR } from './modules/all_mods'
 include { MAP2TRANSCRIPTOME; ENTAP_CONFIG; ENTAP; ENTAP_PROCESS } from './modules/all_mods'
 include { KALLISTO_INDEX; KALLISTO } from './modules/all_mods'
 
@@ -208,10 +209,14 @@ workflow {
     } else {
         refseq_ch = Channel.fromPath(refseq_db) 
     }
-    if (nr_db == false) {
-        nr_ch = DOWNLOAD_NR()
+    if (use_nr_db == true) {
+        if (nr_db == false) {
+            nr_ch = DOWNLOAD_NR()
+        } else {
+            nr_ch = Channel.fromPath(nr_db)
+        }
     } else {
-        nr_ch = Channel.fromPath(nr_db) 
+        nr_ch = Channel.empty()
     }
     ref_dbs_fa_ch = refseq_ch.mix(nr_ch).collect()
 

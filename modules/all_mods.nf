@@ -647,13 +647,9 @@ process DOWNLOAD_NR {
 
     script:
     """
-    wget ftp://ftp.ncbi.nlm.nih.gov/blast/db/nr.*.tar.gz
+    wget ftp://ftp.ncbi.nlm.nih.gov/blast/db/FASTA/nr.gz
     
-    for archive in nr.*tar.gz; do
-        tar -xvzf \$archive
-    done
-
-    cat nr.* > nr_database.fasta
+    gunzip -c nr.gz > nr_database.fasta
     """
 }
 
