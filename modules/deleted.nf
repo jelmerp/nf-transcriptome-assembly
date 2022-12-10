@@ -1,6 +1,11 @@
 
 //include { DOWNLOAD_SWISSPROT; DOWNLOAD_EGGNOG_SQL; DOWNLOAD_EGGNOG_DIAMOND }
 
+// For config:
+//     withName: 'DOWNLOAD_EGGNOG_DIAMOND' {
+//        conda = "/fs/ess/PAS0471/jelmer/conda/diamond"
+//    }
+
 WORKFLOW {
     if (swissprot_db == false) {
         swissprot_ch = DOWNLOAD_SWISSPROT()

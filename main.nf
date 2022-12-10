@@ -4,42 +4,80 @@
 
 def helpMessage() {
     log.info"""
-    ============================================================================
-            T R A N S C R I P T O M E   A S S E M B L Y   P I P E L I N E
-    ============================================================================
+    ===========================================================================================================================
+                            T R A N S C R I P T O M E   A S S E M B L Y   P I P E L I N E
+    ===========================================================================================================================
     REQUIRED OPTIONS:
-        --reads                 <str>   Single-quoted stirng with path to input dir + glob to match FASTQ files
+        --reads                 <str>   Single-quoted string with path to input dir + glob to match FASTQ files
                                             E.g. 'data/fastq/*_R{1,2}.fastq.gz'
         --busco_db              <str>   Busco database name (see https://busco.ezlab.org/list_of_lineages.html)
-        --entap_taxon           <file>  Taxon name for EnTAP, using format 'homo_sapiens' (underscores, no spaces)
+        --entap_taxon           <file>  Taxon name for EnTAP, using format 'homo_sapiens' (lower case and underscores instead of spaces)
         --entap_contam          <file>  Comma-separated list of contaminant taxa for EnTAP (e.g., 'viruses,bacteria')
+                                            Taxon names should be according to NCBI taxonomy (https://www.ncbi.nlm.nih.gov/taxonomy)
 
     DATA I/O OPTIONS:
-        --outdir                <dir>   Final output dir for workflow results               [default: 'results/nf_tram']
-        --subset_fastq          <int>   Subset the FASTQ files to <int> reads               [default: no subsetting]
-        --ref_fasta             <file>  Reference FASTA file for Trinity genome-guided assembly [default: unset]
-        --ref_index             <dir>   STAR index dir for the '--ref_fasta' reference      [default: none => create index]
-        --nfiles_rcorr          <int>   Number of files to run rcorrector with at a time    [default: 20 (=10 PE samples)]
+        --outdir                <dir>   Final output dir for workflow results                   [default: 'results/nf_tram']
+        --genome_fasta          <file>  Reference FASTA file for Trinity genome-guided assembly [default: unset]
+        --genome_index          <dir>   STAR index dir for the '--genome_fasta' reference       [default: none => create index]
+                                            This will cause the workflow to skip the reference indexing step.
+        --entap_config_init     <file>  Input EnTap config file (only used as a starting point) [default: 'conf/entap_config.ini' in workflow repo]
+        --entap_custom_db       <file>  FASTA file with a custom protein database               [default: none]
+        --entap_nr_db           <file>  FASTA file with already downloaded NCBI NR database     [default: none => will be downloaded]
+        --entap_refseq_db       <file>  FASTA file with already downloaded NCBI RefSeq database [default: none => will be downloaded]
+        --entap_swissprot_db    <file>  FASTA file with already downloaded SwissProt database   [default: none => will be downloaded]
+    
+    MORE DATA I/O - PROVIDE WORKFLOW OUTPUTS TO SKIP STEPS:
+        --assembly_final        <file>  Final FASTA assembly (typically, EnTap output).
+                                            Must be used with --tx2gene and --reads_nonorm. Only quantification will be run.
+        --tx2gene               <file>  A transcript-to-gene map.
+                                            Must be used with --assembly_final. Only quantification will be run.
+        --assembly_1trans       <file>  Merged FASTA assembly with the longest transcript per gene (typically, EviGene output).
+                                            Must be used with --assembly_alltrans and --reads_nonorm.
+                                            Only annotation, assembly qc, and quantification will be run.
+        --assembly_alltrans     <file>  Merged FASTA assembly with the all transcripts (typically, EviGene output).
+                                            Must be used with --assembly_1trans and --reads_nonorm.
+        --reads_norm            <dir>   Directory with processed, normalized reads in FASTQ format.
+                                            Must be used with --reads_nonorm. Read QC and processing will be skipped.
+        --reads_nonorm          <dir>   Directory with processed, non-normalized reads in FASTQ format.
+        --entap_config_final    <file>  Final EnTap config file (after running EnTap config)
+                                            Must be used with --entap_diamond_db_dir to skip the EnTap config step.
+        --entap_diamond_db_dir  <dir>   Final EnTap DIAMOND db dir (after running EnTap config)
+                                            Must be used with --entap_config_final to skip the EnTap config step.
+        --genome_bam            <file>  BAM file of reads mapped to a ref. genome for genome-guided assembly with Trinity.
+                                            Providing this file will make the workflow skip the map2genome steps.
 
-    SETTINGS:
+    OPTIONS TO DETERMINE WHAT PARTS OF THE WORKFLOW TO RUN:
+        --subset_fq             <int>   Subset the FASTQ files to <int> reads                   [default: no subsetting]
+        --skip_qc_reads         <bool>  Skip the read QC (FastQC => MultiQC) steps              [default: false]
+        --skip_process_reads    <bool>  Skip the reads processing steps                         [default: false]
+        --skip_assembly         <bool>  Skip the assembly steps                                 [default: false]
+        --skip_qc_assembly      <bool>  Skip the assembly QC steps                              [default: false]
+        --skip_annotate         <bool>  Skip the annotation steps                               [default: false]
+        --skip_quantify         <bool>  Skip the expression quantification steps                [default: false]
+
+    GENERAL SETTINGS:
+        --strandedness          <str>   Sequencing library orientation: 'reverse', 'forward', or 'unstranded' [default: 'reverse']
         --trim_nextseq                  Use TrimGalore/Cutadapt's 'nextseq' option for poly-G trimming [default: don't use]
-        --strandedness          <str>   'reverse', 'forward', or 'unstranded'               [default: 'reverse']
-        --min_contig_length     <int>   Minimum contig length (TransAbyss and Trinity)      [default: 300]
-        --k_transabyss          <str>   Comma-separated list of kmer-values for TransAbyss
-        --k_spades              <str>   Comma-separated list of kmer-values for SPAdes
-        --kraken_db             <dir>   Path to a Kraken database                           [default: '/fs/project/PAS0471/jelmer/refdata/kraken/std-plus-fungi']
-        --entap_qcov            <int>   Min. query coverage for similarity searching        [default: 50]
-        --entap_tcov            <int>   Min. target coverage for similarity searching       [default: 50] 
-        --entap_eval            <int>   Evalue cutoff for similarity searching              [default: 1e-5]  
-        --entap_fpkm            <num>   FPKM threshold                                      [default: 0.5] 
-        --entap_refseq_db_type  <str>   NCBI RefSeq DB type                                 [default: 'complete']
+        --trim_qual             <int>   TrimGalore Phred min. base quality score                [default: 5]
+        --trim_len              <int>   TrimGalore min. read length                             [default: 36]
+        --nfiles_rcorr          <int>   Number of files to run Rcorrector with at a time        [default: 20 (=10 PE samples)]
+        --kraken_db_url         <URL>   URL to a Kraken database/index from https://benlangmead.github.io/aws-indexes/k2
+                                            [default: https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20220926.tar.gz]
+        --kraken_db_dir         <dir>   Path to a local Kraken database dir                     [default: none]
+        --k_transabyss          <str>   Comma-separated list of kmer-values for TransAbyss      [default: '21,25,31,35,45,55,65,75,85']
+        --k_spades              <str>   Comma-separated list of kmer-values for SPAdes          [default: '55,75,"auto"']
+        --min_contig_length     <int>   Minimum contig length (for TransAbyss and Trinity)      [default: 300]
+        --entap_qcov            <int>   EnTap min. query coverage for DIAMOND similarity search [default: 80]
+        --entap_tcov            <int>   EnTap min. target coverage for DIAMOND similarity search[default: 80] 
+        --entap_eval            <int>   EnTap evalue cutoff for DIAMOND similarity searching    [default: 1e-5]  
+        --entap_fpkm            <num>   EnTap FPKM threshold for transcript filtering           [default: 0.5] 
+        --entap_use_nr          <bool>  Whether to use the NCBI NR database in EnTap            [default: true]
+        --entap_use_tair        <bool>  Whether to use the (Arabidopsis) TAIR database in EnTap [default: true]         
+        --entap_refseq_db_type  <str>   NCBI RefSeq database type for EnTap                     [default: 'complete']
                                             Options: 'complete', 'plant', 'vertebrate_mammalian', 'vertebrate_other', 'invertebrate'
-        --entap_refseq_db       <file>  FASTA file with already downloaded RefSeq DB        [default: none]
-        --entap_nr_db           <file>  FASTA file with already downloaded NR DB            [default: none]
-        --entap_swissprot_db    <file>  FASTA file with already downloaded SwissProt DB     [default: none]
 
     UTILITY OPTIONS
-        --help                      Print this help message and exit
+        --help                          Print this help message and exit
     """.stripIndent()
 }
 
@@ -49,7 +87,7 @@ if (params.help) {
     exit 0
 }
 
-// Process parameters
+// Check parameters
 if (!params.reads) { exit 1, '\n============\nERROR: Input reads not specified! Use "--reads" to do so\n============\n' }
 if (!params.busco_db) { exit 1, '\n============\nERROR: Busco db name not specified! Use "--busco_db" to do so\n============\n' }
 if (!params.entap_taxon) { exit 1, '\n============\nERROR: Taxon name for EnTap not specified! Use "--entap_taxon" to do so\n============\n' }
@@ -57,18 +95,6 @@ if (!params.entap_contam) { exit 1, '\n============\nERROR: Contaminant list for
 
 def checkPathParamList = [ params.reads ]
 for (param in checkPathParamList) { if (param) { file(param, checkIfExists: true) } }
-
-n_reads = params.subset_fastq
-k_abyss = params.k_abyss?.split(',') as List // See https://github.com/nextflow-io/nextflow/discussions/2821
-k_spades = params.k_spades
-refseq_type = params.entap_refseq_type
-refseq_db = params.entap_refseq_db
-nr_db = params.entap_nr_db
-use_nr_db = params.entap_use_nr_db
-swissprot_db = params.entap_swissprot_db
-
-// Hardcoded parameters
-norms = [ 'true', 'false']    // Run assemblies with normalized and non-normalized data
 
 // Run info
 log.info ""
@@ -80,149 +106,106 @@ params.each { k, v -> if (v) { println "${k}: ${v}" } }
 log.info "======================================================================"
 log.info ""
 
-// Include module
-include { SUBSET_FASTQ } from './modules/all_mods'
-include { FASTQC } from './modules/all_mods'
-include { MULTIQC_RAW; MULTIQC_TRIM; MULTIQC_PRE } from './modules/all_mods'
-include { TRIMGALORE; CAT_FILENAMES } from './modules/all_mods'
-include { RCORRECTOR; RCORRFILTER } from './modules/all_mods'
-include { SORTMERNA } from './modules/all_mods'
-include { KRAKEN; KRONA } from './modules/all_mods'
-include { ORNA; JOIN_ORNA; JOIN_KRAKEN } from './modules/all_mods'
-include { INDEX_GENOME; MAP2GENOME; MERGE_BAM } from './modules/all_mods'
-include { TRINITY ; TRINITY_GUIDED } from './modules/all_mods'
-include { TRANSABYSS as TRANSABYSS_NORM; TRANSABYSS as TRANSABYSS_NONORM } from './modules/all_mods'
-include { SPADES as SPADES_NORM; SPADES as SPADES_NONORM } from './modules/all_mods'
-include { CONCAT_ASSEMBLIES; EVIGENE } from './modules/all_mods'
-include { BUSCO; RNAQUAST; DETONATE } from './modules/all_mods'
-include { DOWNLOAD_REFSEQ; DOWNLOAD_NR } from './modules/all_mods'
-include { MAP2TRANSCRIPTOME; ENTAP_CONFIG; ENTAP; ENTAP_PROCESS } from './modules/all_mods'
-include { KALLISTO_INDEX; KALLISTO } from './modules/all_mods'
+// Process paramaters
+k_abyss = params.k_abyss?.split(',') as List // See https://github.com/nextflow-io/nextflow/discussions/2821
+k_spades = params.k_spades?.split(',') as List
+
+// Determine what to run
+skip_qc_reads = false
+skip_process_reads = false
+skip_assembly = false
+skip_qc_assembly = false
+skip_annotate = false
+skip_quantify = false
+
+if (params.assembly_final != false && params.tx2gene != false) {
+    skip_qc_reads = true
+    skip_process_reads = true
+    skip_assembly = true
+    skip_qc_assembly = true
+    skip_annotate = true
+    assembly_final = Channel.fromPath(params.assembly_final)
+    tx2gene = Channel.fromPath(params.tx2gene)
+} else if (params.assembly_1trans != false && params.assembly_alltrans != false && params.reads_nonorm != false) {
+    skip_qc_reads = true
+    skip_process_reads = true
+    skip_assembly = true
+    assembly_1trans = Channel.fromPath(params.assembly_1trans)
+    assembly_alltrans = Channel.fromPath(params.assembly_alltrans)
+    reads_nonorm = Channel.fromPath(params.reads_nonorm)
+} else if (params.reads_norm != false && params.reads_nonorm != false) {
+    skip_qc_reads = true
+    skip_process_reads = true
+    reads_norm = Channel.fromPath(params.reads_norm)
+    reads_nonorm = Channel.fromPath(params.reads_nonorm)
+}
+
+if (params.skip_qc_reads == true) skip_qc_reads = true
+if (params.skip_process_reads == true) skip_process_reads = true
+if (params.skip_assembly == true) skip_assembly = true
+if (params.skip_qc_assembly == true) skip_qc_assembly = true
+if (params.skip_annotate == true) skip_annotate = true
+if (params.skip_quantify == true) skip_quantify = true
+
+println "Skip read QC?                      ${skip_qc_reads}"
+println "Skip read processing?              ${skip_process_reads}"
+println "Skip read assembly?                ${skip_assembly}"
+println "Skip annotation?                   ${skip_qc_assembly}"
+println "Skip assembly QC?                  ${skip_annotate}"
+println "Skip expression quantification?    ${skip_quantify}"
+
+// Include modules
+include { SUBSET_FASTQ } from './modules/subset_fastq'
+
+// Include subworkflows
+include { QC_READS } from "./subworkflows/qc_reads" //addParams(OUTPUT: "${params.outdir}/read_qc")
+include { PROCESS_READS } from "./subworkflows/process_reads"
+include { ASSEMBLY } from "./subworkflows/assembly"
+include { QC_ASSEMBLY } from "./subworkflows/qc_assembly"
+include { ANNOTATE } from "./subworkflows/annotate"
+include { QUANTIFY } from "./subworkflows/quantify"
 
 // Workflow
 workflow {
-    reads_ch = Channel.fromFilePairs(params.reads, checkIfExists: true)
-    if (params.ref_fasta != false) {
-        ref_ch = Channel.fromPath(params.ref_fasta)
+    ch_reads = Channel.fromFilePairs(params.reads, checkIfExists: true)
+    println "Number of input samples:"; ch_reads.count().view()
+    
+    // Subset FASTQ files
+    if (params.subset_fq != false) ch_reads = SUBSET_FASTQ(ch_reads, params.subset_fq).fq
+
+    // Read QC
+    if (skip_qc_reads == false) QC_READS(ch_reads)
+    
+    // Read processing
+    if (skip_process_reads == false) {
+        PROCESS_READS(ch_reads)
+        reads_norm = PROCESS_READS.out.reads_norm
+        reads_nonorm = PROCESS_READS.out.reads_nonorm
     }
 
-    println "Number of input samples:"
-    reads_ch.count().view()
-    
-    // ======================================================================= //
-    //                            PRE-PROCESSING
-    // ======================================================================= //
-    if (params.subset_fastq != false) {
-        finalreads_ch = SUBSET_FASTQ(reads_ch, n_reads).fq
-    } else {
-        finalreads_ch = reads_ch
+    // Transcriptome assembly
+    if (skip_assembly == false) {
+        ASSEMBLY(reads_norm, reads_nonorm, k_abyss, k_spades)
+        assembly_1trans = ASSEMBLY.out.1trans
+        assembly_alltrans = ASSEMBLY.out.alltrans
     }
 
-    // Initial QC
-    fqc_ch = FASTQC(finalreads_ch)
-    MULTIQC_RAW(fqc_ch.zip.collect())
-
-    // Trimming
-    trim_ch = TRIMGALORE(finalreads_ch)
-    MULTIQC_TRIM(trim_ch.fqc_zip.mix(trim_ch.trim_report).collect())
-
-    // Read correction
-    trim_all_ch = CAT_FILENAMES(trim_ch.fq_trimmed.collect().flatten().collect())
-    rcorr_ch = RCORRECTOR(trim_all_ch.splitText(by: params.nfiles_rcorr)) // Run with nfiles_rcorr files per time
-
-    rcorr_ch = rcorr_ch.fq             // Get reads back into by-sample tuple format
-        .flatten()
-        .map { file -> tuple(file.simpleName - ~/_R[12].*/, file) }
-        .groupTuple(by: 0, size: 2)
-    rcorrfilter_ch = RCORRFILTER(rcorr_ch)
-    
-    // Remove rRNA
-    sortmerna_ch = SORTMERNA(rcorrfilter_ch.fq)
-    
-    // Remove contaminants
-    kraken_ch = KRAKEN(sortmerna_ch.fq_unmapped)
-    KRONA(kraken_ch.main)
-    MULTIQC_PRE(kraken_ch.report.mix(sortmerna_ch.log).collect())
-
-    // Read normalization
-    orna_ch = ORNA(kraken_ch.fq)
-    
-    // ======================================================================= //
-    //                              ASSEMBLY
-    // ======================================================================= //
-    // Get channels with all preprocessed FASTQ files in one dir
-    normreads_ch = JOIN_ORNA(orna_ch.fq.collect())
-    nonormreads_ch = JOIN_KRAKEN(kraken_ch.fq_list.collect())
-
-    // Reference-guided Trinity
-    if (params.ref_fasta != false) {
-        if (params.ref_index == false) {
-            index_ch = INDEX_GENOME(ref_ch).index
-        } else {
-            index_ch = Channel.value(params.ref_index) // NOTE: Channel.fromPath() doesn't work here - won't recycle
-        }
-        bam_ch = MAP2GENOME(kraken_ch.fq, index_ch)
-        bam_merged_ch = MERGE_BAM(bam_ch.bam.collect())
-        trinity_gg_ch = TRINITY_GUIDED(bam_merged_ch.bam).assembly
-    } else {
-        trinity_gg_ch = Channel.empty()
+    // Assembly QC
+    if (skip_qc_assembly == false) {
+        QC_ASSEMBLY(assembly_1trans, assembly_alltrans, reads_nonorm)
     }
 
-    // De novo Trinity
-    trinity_ch = TRINITY(nonormreads_ch, norms).assembly
-
-    // Trans-abyss
-    transabyss_norm_ch = TRANSABYSS_NORM(normreads_ch, k_abyss, "true").assembly
-    transabyss_nonorm_ch = TRANSABYSS_NONORM(nonormreads_ch, k_abyss, "false").assembly
-
-    // SPAdes
-    spades_norm_ch = SPADES_NORM(normreads_ch, k_spades, "true").assembly
-    spades_nonorm_ch = SPADES_NONORM(nonormreads_ch, k_spades, "false").assembly
-
-    // Merge assemblies
-    all_asm_ch = trinity_gg_ch
-        .mix(trinity_ch, transabyss_norm_ch, transabyss_nonorm_ch, spades_norm_ch, spades_nonorm_ch)
-        .collect()
-    concat_asm_ch = CONCAT_ASSEMBLIES(all_asm_ch)
-    evigene_ch = EVIGENE(concat_asm_ch.assembly)
-
-    // ======================================================================= //
-    //                           ASSEMBLY QC
-    // ======================================================================= //
-    BUSCO(evigene_ch.primarytrans, params.busco_db)
-    RNAQUAST(evigene_ch.all)
-    DETONATE(evigene_ch.all, nonormreads_ch)
-
-    // ======================================================================= //
-    //                           QUANTIFICATION
-    // ======================================================================= //
-    kallisto_idx_ch = KALLISTO_INDEX(evigene_ch.all)
-    KALLISTO(kraken_ch.fq, kallisto_idx_ch.index)
-    
-    // ======================================================================= //
-    //                           ANNOTATION
-    // ======================================================================= //
-    map2trans_ch = MAP2TRANSCRIPTOME(evigene_ch.all, nonormreads_ch)
-
-    if (refseq_db == false) {
-        refseq_ch = DOWNLOAD_REFSEQ(refseq_type)
-    } else {
-        refseq_ch = Channel.fromPath(refseq_db) 
+    // Assembly annotation
+    if (skip_annotate == false) {
+        ANNOTATE(assembly_1trans, assembly_alltrans, reads_nonorm)
+        assembly_final = ANNOTATE.out.assembly
+        tx2gene = ANNOTATE.out.tx2gene
     }
-    if (use_nr_db == true) {
-        if (nr_db == false) {
-            nr_ch = DOWNLOAD_NR()
-        } else {
-            nr_ch = Channel.fromPath(nr_db)
-        }
-    } else {
-        nr_ch = Channel.empty()
-    }
-    ref_dbs_fa_ch = refseq_ch.mix(nr_ch).collect()
 
-    entap_conf_ch = ENTAP_CONFIG(ref_dbs_fa_ch)
-    entap_ch = ENTAP(evigene_ch.primarytrans, entap_conf_ch.db_dir, entap_conf_ch.config, map2trans_ch.bam)
-    entap_ed_ch = ENTAP_PROCESS(entap_ch.out, evigene_ch.primarytrans, evigene_ch.all)
+    // Transcript/gene quantification
+    if (skip_quantify == false) {
+        QUANTIFY(assembly_final, tx2gene, reads_nonorm)
+    }
 }
 
 // Report completion/failure of workflow

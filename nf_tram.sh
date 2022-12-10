@@ -29,10 +29,11 @@ Print_help() {
     echo "OTHER INPUT DATA OPTIONS:"
     echo "  -q/--fq-pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
     echo "  --ref-fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
-    echo "  --subset-fastq  <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
+    echo "  --subset-fq     <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
     echo
     echo "OTHER KEY OPTIONS:"
     echo "  --trim-nextseq          Use NextSeq/NovaSeq polyG-trimming TrimGalore option    [default: don't use]"
+    echo "  --kraken-db-url <URL>   URL to a URL to Kraken database/index from https://benlangmead.github.io/aws-indexes/k2 [default: https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20220926.tar.gz]"
     echo "  --more-args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
@@ -52,7 +53,8 @@ Print_help() {
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
     echo "  --debug                 Run the script in debug mode (print all code)"
-    echo "  -h/--help               Print this help message and exit"
+    echo "  -h                      Print this help message and exit"
+    echo "  --help                  Print the Nextflow workflow's help and exit"
     echo
     echo "EXAMPLE COMMANDS:"
     echo "  sbatch $0 -i data/fastq -o results/tram"
@@ -71,6 +73,12 @@ Load_software() {
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
     ## Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
     export NXF_OPTS='-Xms1g -Xmx4g'
+}
+
+## Print help for the focal program
+Print_help_workflow() {
+    Load_software
+    nextflow run "$nf_file" --help
 }
 
 ## Print SLURM job resource usage info
@@ -123,6 +131,7 @@ nf_file="workflows/nf-transcriptome-assembly/main.nf"
 profile="conda,normal"
 resume=true && resume_arg="-resume"
 trim_nextseq=false && nextseq_arg=""
+kraken_db_url="https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20220926.tar.gz"
 
 debug=false
 dryrun=false && e=""
@@ -141,7 +150,7 @@ contam=""
 config_file="" && config_arg=""
 more_args=""
 work_dir_arg=""
-subset_fastq="" && subset_arg=""
+subset_fq="" && subset_arg=""
 ref_fasta="" && ref_arg=""
 
 ## Parse command-line options
@@ -156,8 +165,9 @@ while [ "$1" != "" ]; do
         --taxon )               shift && taxon=$1 ;;
         --contam )              shift && contam=$1 ;;
         --ref-fasta )           shift && ref_fasta=$1 ;;
+        --kraken-db-url )       shift && kraken_db_url=$1 ;;
         --trim-nextseq )        trim_nextseq=true ;;
-        --subset-fastq )        shift && subset_fastq=$1 ;;
+        --subset-fq )           shift && subset_fq=$1 ;;
         --container-dir )       shift && container_dir=$1 ;;
         --more-args )           shift && more_args=$1 ;;
         -config )               shift && config_file=$1 ;;
@@ -166,7 +176,8 @@ while [ "$1" != "" ]; do
         -no-resume )            resume=false ;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true && e="echo ";;
-        -h | --help )           Print_help; exit ;;
+        -h )                    Print_help; exit ;;
+        --help )                Print_help_workflow; exit ;;
         * )                     Die "Invalid option $1" "$all_args" ;;
     esac
     shift
@@ -197,8 +208,10 @@ set -ueo pipefail
 
 ## Get the OSC config file
 if [[ ! -f "$osc_config" ]]; then
-    [[ ! -f $(basename "$OSC_CONFIG_URL") ]] && wget -q "$OSC_CONFIG_URL"
-    osc_config=$(basename "$OSC_CONFIG_URL")
+    osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
+    if [[ ! -f $(basename "$OSC_CONFIG_URL") ]]; then
+        wget -q -O "$osc_config" "$OSC_CONFIG_URL"
+    fi
 fi
 
 ## Define trace output dir
@@ -212,7 +225,7 @@ fi
 
 ## Build other Nextflow arguments
 [[ "$resume" = false ]] && resume_arg=""
-[[ "$subset_fastq" != "" ]] && subset_arg="--subset_fastq $subset_fastq"
+[[ "$subset_fq" != "" ]] && subset_arg="--subset_fq $subset_fq"
 [[ "$trim_nextseq" = true ]] && nextseq_arg="--trim_nextseq"
 [[ "$ref_fasta" != "" ]] && ref_arg="--ref_fasta $ref_fasta"
 
@@ -236,11 +249,12 @@ echo "  Input dir:                       $indir"
 echo "  FASTQ pattern:                   $fq_pattern"
 echo "  Output dir:                      $outdir"
 [[ "$ref_fasta" != "" ]] && echo "  Reference genome FASTA:          $ref_fasta"
-[[ "$subset_fastq" != "" ]] && echo "  Nr. of reads to subset FASTQ to: $subset_fastq"
+[[ "$subset_fq" != "" ]] && echo "  Nr. of reads to subset FASTQ to: $subset_fq"
 echo
 echo "RUN SETTINGS:"
 echo "  BUSCO database:                  $busco_db"
 echo "  NextSeq/NovaSeq polyG-trimming:  $trim_nextseq"
+echo "  Kraken database URL:             $kraken_db_url"
 echo "  Taxon name:                      $taxon"
 echo "  Contaminant taxa:                $contam"
 [[ "$more_args" != "" ]] && echo "  Additional arguments:            $more_args"
@@ -278,6 +292,7 @@ ${e}Time nextflow run \
         --reads "$indir/$fq_pattern" \
         --outdir "$outdir" \
         --busco_db "$busco_db" \
+        --kraken_db_url "$kraken_db_url" \
         --entap_taxon "$taxon" \
         --entap_contam "$contam" \
         -work-dir "$work_dir" \
