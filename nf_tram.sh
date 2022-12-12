@@ -42,7 +42,7 @@ Print_help() {
     echo "  -profile        <str>   Profile from any of the config files to use             [default: 'conda,normal']"
     echo "  --container-dir <dir>   Singularity container dir                               [default: '/fs/project/PAS0471/containers']"
     echo "                            - This is where any containers used in the workflow will be downloaded to"
-    echo "  -work-dir       <dir>   Scratch (work) dir for the workflow                     [default: '/fs/scratch/PAS0471/$USER/nf_tram']"
+    echo "  -work-dir       <dir>   Scratch (work) dir for the workflow                     [default: Nextflow default = 'work']"
     echo "                            - This is where the workflow results will be stored before final results are copied to the specified output dir"
     echo "                            - This should preferable be a dir in OSC's scratch dir rather than in the main project dir"
     echo "  -config         <file>  Additional config file                                  [default: none]"
@@ -126,7 +126,6 @@ osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present
 ## Option defaults
 fq_pattern='*_R{1,2}*.fastq.gz'
 container_dir=/fs/project/PAS0471/containers
-work_dir=/fs/scratch/PAS0471/$USER/nf_tram
 nf_file="workflows/nf-transcriptome-assembly/main.nf"
 profile="conda,normal"
 resume=true && resume_arg="-resume"
@@ -149,7 +148,7 @@ taxon=""
 contam=""
 config_file="" && config_arg=""
 more_args=""
-work_dir_arg=""
+work_dir="" && work_dir_arg=""
 subset_fq="" && subset_arg=""
 ref_fasta="" && ref_arg=""
 
@@ -172,7 +171,7 @@ while [ "$1" != "" ]; do
         --more-args )           shift && more_args=$1 ;;
         -config )               shift && config_file=$1 ;;
         -profile )              shift && profile=$1 ;;
-        -work-dir )             shift && work_dir_arg=$1 ;;
+        -work-dir )             shift && work_dir=$1 ;;
         -no-resume )            resume=false ;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true && e="echo ";;
@@ -228,15 +227,6 @@ fi
 [[ "$subset_fq" != "" ]] && subset_arg="--subset_fq $subset_fq"
 [[ "$trim_nextseq" = true ]] && nextseq_arg="--trim_nextseq"
 [[ "$ref_fasta" != "" ]] && ref_arg="--ref_fasta $ref_fasta"
-
-## Work dir
-if [[ "$work_dir_arg" = "" ]]; then
-    ## If using the default, add a run ID using the outdir
-    work_dir=$work_dir/$(basename "$outdir")
-else
-    ## If a work_dir was provided as an arg, use that one as-is
-    work_dir="$work_dir_arg"
-fi
 
 ## Report
 echo
@@ -295,7 +285,6 @@ ${e}Time nextflow run \
         --kraken_db_url "$kraken_db_url" \
         --entap_taxon "$taxon" \
         --entap_contam "$contam" \
-        -work-dir "$work_dir" \
         -ansi-log false \
         -with-report "$trace_dir"/report.html \
         -with-trace "$trace_dir"/trace.txt \
@@ -303,6 +292,7 @@ ${e}Time nextflow run \
         -with-dag "$trace_dir"/dag.png \
         -profile "$profile" \
         $nextseq_arg \
+        $work_dir_arg \
         $ref_arg \
         $subset_arg \
         $config_arg \
