@@ -13,7 +13,7 @@ process MERGE_BAM {
     script:
     """
     merge_bam.sh \
-        -o merged.bam \
+        --outfile merged.bam \
         ${bamfiles}
     
     cp .command.log logs/slurm-merge.log
