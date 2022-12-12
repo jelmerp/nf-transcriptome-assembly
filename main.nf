@@ -18,8 +18,6 @@ def helpMessage() {
     DATA I/O OPTIONS:
         --outdir                <dir>   Final output dir for workflow results                   [default: 'results/nf_tram']
         --genome_fasta          <file>  Reference FASTA file for Trinity genome-guided assembly [default: unset]
-        --genome_index          <dir>   STAR index dir for the '--genome_fasta' reference       [default: none => create index]
-                                            This will cause the workflow to skip the reference indexing step.
         --entap_config_init     <file>  Input EnTap config file (only used as a starting point) [default: 'conf/entap_config.ini' in workflow repo]
         --entap_custom_db       <file>  FASTA file with a custom protein database               [default: none]
         --entap_nr_db           <file>  FASTA file with already downloaded NCBI NR database     [default: none => will be downloaded]
@@ -27,24 +25,26 @@ def helpMessage() {
         --entap_swissprot_db    <file>  FASTA file with already downloaded SwissProt database   [default: none => will be downloaded]
     
     MORE DATA I/O - PROVIDE WORKFLOW OUTPUTS TO SKIP STEPS:
-        --assembly_final        <file>  Final FASTA assembly (typically, EnTap output).
-                                            Must be used with --tx2gene and --reads_nonorm. Only quantification will be run.
-        --tx2gene               <file>  A transcript-to-gene map.
-                                            Must be used with --assembly_final. Only quantification will be run.
+        --genome_index          <dir>   STAR index dir for the '--genome_fasta' reference       [default: none => create index]
+                                            This will cause the workflow to skip the reference indexing step.
+        --genome_bam            <file>  BAM file of reads mapped to a ref. genome for genome-guided assembly with Trinity.
+                                            Providing this file will make the workflow skip the map2genome steps.
+        --reads_norm            <dir>   Directory with processed, normalized reads in FASTQ format.
+                                            Must be used with --reads_nonorm. Read QC and processing will be skipped.
+        --reads_nonorm          <dir>   Directory with processed, non-normalized reads in FASTQ format.
         --assembly_1trans       <file>  Merged FASTA assembly with the longest transcript per gene (typically, EviGene output).
                                             Must be used with --assembly_alltrans and --reads_nonorm.
                                             Only annotation, assembly qc, and quantification will be run.
         --assembly_alltrans     <file>  Merged FASTA assembly with the all transcripts (typically, EviGene output).
                                             Must be used with --assembly_1trans and --reads_nonorm.
-        --reads_norm            <dir>   Directory with processed, normalized reads in FASTQ format.
-                                            Must be used with --reads_nonorm. Read QC and processing will be skipped.
-        --reads_nonorm          <dir>   Directory with processed, non-normalized reads in FASTQ format.
         --entap_config_final    <file>  Final EnTap config file (after running EnTap config)
                                             Must be used with --entap_diamond_db_dir to skip the EnTap config step.
         --entap_diamond_db_dir  <dir>   Final EnTap DIAMOND db dir (after running EnTap config)
                                             Must be used with --entap_config_final to skip the EnTap config step.
-        --genome_bam            <file>  BAM file of reads mapped to a ref. genome for genome-guided assembly with Trinity.
-                                            Providing this file will make the workflow skip the map2genome steps.
+        --assembly_final        <file>  Final FASTA assembly (typically, EnTap output).
+                                            Must be used with --tx2gene and --reads_nonorm. Only quantification will be run.
+        --tx2gene               <file>  A transcript-to-gene map.
+                                            Must be used with --assembly_final. Only quantification will be run.
 
     OPTIONS TO DETERMINE WHAT PARTS OF THE WORKFLOW TO RUN:
         --subset_fq             <int>   Subset the FASTQ files to <int> reads                   [default: no subsetting]
