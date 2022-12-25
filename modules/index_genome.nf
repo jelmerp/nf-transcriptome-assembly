@@ -12,8 +12,8 @@ process INDEX_GENOME {
     script:
     """
     star_index.sh \
-        -i ${ref_fasta} \
-        -o index_dir
+        --fasta ${ref_fasta} \
+        --outdir index_dir
     
     cp .command.log index_dir/logs/slurm.log
     """

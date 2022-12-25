@@ -12,35 +12,35 @@
 # ==============================================================================
 #                                FUNCTIONS
 # ==============================================================================
-## Help function
+# Help function
 Print_help() {
     echo
     echo "================================================================================"
     echo "                        $0"
-    echo "             Run the Nextflow TRanscriptome AsseMbly (tram) pipeline"
+    echo "             Run the TRanscriptome AsseMbly (tram) Nextflow workflow"
     echo "================================================================================"
     echo "REQUIRED OPTIONS:"
     echo "  -i/--indir      <dir>   Input dir with FASTQ files"
     echo "  -o/--outdir     <dir>   Output directory for workflow results"
-    echo "  --busco-db      <str>   BUSCO database name (see https://busco.ezlab.org/list_of_lineages.html)"
+    echo "  --busco_db      <str>   BUSCO database name (see https://busco.ezlab.org/list_of_lineages.html)"
     echo "  --taxon         <str>   Taxon name for EnTAP, using format 'homo_sapiens' (underscores, no spaces)"
     echo "  --contam        <str>   Comma-separated list of contaminant taxa for EnTAP (e.g., 'viruses,bacteria')"
     echo
     echo "OTHER INPUT DATA OPTIONS:"
-    echo "  -q/--fq-pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
-    echo "  --ref-fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
-    echo "  --subset-fq     <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
+    echo "  -q/--fq_pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
+    echo "  --ref_fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
+    echo "  --subset_fq     <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
     echo
     echo "OTHER KEY OPTIONS:"
-    echo "  --trim-nextseq          Use NextSeq/NovaSeq polyG-trimming TrimGalore option    [default: don't use]"
-    echo "  --kraken-db-url <URL>   URL to a URL to Kraken database/index from https://benlangmead.github.io/aws-indexes/k2 [default: https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20220926.tar.gz]"
-    echo "  --more-args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
+    echo "  --trim_nextseq          Use NextSeq/NovaSeq polyG-trimming TrimGalore option    [default: don't use]"
+    echo "  --kraken_db_url <URL>   URL to a URL to Kraken database/index from https://benlangmead.github.io/aws-indexes/k2 [default: https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20220926.tar.gz]"
+    echo "  --more_args     <str>   Quoted string with additional arguments to pass to 'nextflow run'"
     echo
     echo "NEXTFLOW-RELATED OPTIONS:"
-    echo "  -n/--nf-file    <file>  Nextflow workflow definition file                       [default: 'workflows/nf-transcriptome-assembly/main.nf']"
+    echo "  -n/--nf_file    <file>  Nextflow workflow definition file                       [default: 'workflows/nf-transcriptome-assembly/main.nf']"
     echo "  -no-resume              Don't attempt to resume workflow run, but start over    [default: resume]"
     echo "  -profile        <str>   Profile from any of the config files to use             [default: 'conda,normal']"
-    echo "  --container-dir <dir>   Singularity container dir                               [default: '/fs/project/PAS0471/containers']"
+    echo "  --container_dir <dir>   Singularity container dir                               [default: '/fs/project/PAS0471/containers']"
     echo "                            - This is where any containers used in the workflow will be downloaded to"
     echo "  -work-dir       <dir>   Scratch (work) dir for the workflow                     [default: Nextflow default = 'work']"
     echo "                            - This is where the workflow results will be stored before final results are copied to the specified output dir"
@@ -60,28 +60,28 @@ Print_help() {
     echo "  sbatch $0 -i data/fastq -o results/tram"
 }
 
-## Load the software
+# Load the software
 Load_software() {
-    ## Load OSC's Conda module
+    # Load OSC's Conda module
     module load miniconda3/4.12.0-py39
 
-    ## Activate the Nextflow Conda environment
+    # Activate the Nextflow Conda environment
     [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
     source activate /fs/project/PAS0471/jelmer/conda/nextflow
 
-    ### Singularity container dir - any downloaded containers will be stored here
+    ## Singularity container dir - any downloaded containers will be stored here
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
-    ## Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
+    # Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
     export NXF_OPTS='-Xms1g -Xmx4g'
 }
 
-## Print help for the focal program
+# Print help for the focal program
 Print_help_workflow() {
     Load_software
     nextflow run "$nf_file" --help
 }
 
-## Print SLURM job resource usage info
+# Print SLURM job resource usage info
 Resource_usage() {
     echo
     ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
@@ -89,14 +89,14 @@ Resource_usage() {
     echo
 }
 
-## Resource usage information
+# Resource usage information
 Time() {
     /usr/bin/time -f \
         '\n# Ran the command:\n%C \n\n# Run stats by /usr/bin/time:\nTime: %E   CPU: %P    Max mem: %M K    Exit status: %x \n' \
         "$@"
 }   
 
-## Exit upon error with a message
+# Exit upon error with a message
 Die() {
     error_message=${1}
     error_args=${2-none}
@@ -119,11 +119,11 @@ Die() {
 # ==============================================================================
 #                     CONSTANTS AND DEFAULTS
 # ==============================================================================
-## URL to OSC Nextflow config file
+# URL to OSC Nextflow config file
 OSC_CONFIG_URL=https://raw.githubusercontent.com/mcic-osu/mcic-scripts/main/nextflow/osc.config
 osc_config=mcic-scripts/nextflow/osc.config  # Will be downloaded if not present here
 
-## Option defaults
+# Option defaults
 fq_pattern='*_R{1,2}*.fastq.gz'
 container_dir=/fs/project/PAS0471/containers
 nf_file="workflows/nf-transcriptome-assembly/main.nf"
@@ -140,7 +140,7 @@ slurm=true
 # ==============================================================================
 #                     PARSE COMMAND-LINE OPTIONS
 # ==============================================================================
-## Placeholder defaults
+# Placeholder defaults
 indir=""
 outdir=""
 busco_db=""
@@ -152,23 +152,23 @@ work_dir="" && work_dir_arg=""
 subset_fq="" && subset_arg=""
 ref_fasta="" && ref_arg=""
 
-## Parse command-line options
+# Parse command-line options
 all_args="$*"
 while [ "$1" != "" ]; do
     case "$1" in
         -i | --indir )          shift && indir=$1 ;;
-        -q | --fq-pattern )     shift && fq_pattern=$1 ;;
+        -q | --fq_pattern )     shift && fq_pattern=$1 ;;
         -o | --outdir )         shift && outdir=$1 ;;
         -n | --nf_file )        shift && nf_file=$1 ;;
-        --busco-db )            shift && busco_db=$1 ;;
+        --busco_db )            shift && busco_db=$1 ;;
         --taxon )               shift && taxon=$1 ;;
         --contam )              shift && contam=$1 ;;
-        --ref-fasta )           shift && ref_fasta=$1 ;;
-        --kraken-db-url )       shift && kraken_db_url=$1 ;;
-        --trim-nextseq )        trim_nextseq=true ;;
-        --subset-fq )           shift && subset_fq=$1 ;;
-        --container-dir )       shift && container_dir=$1 ;;
-        --more-args )           shift && more_args=$1 ;;
+        --ref_fasta )           shift && ref_fasta=$1 ;;
+        --kraken_db_url )       shift && kraken_db_url=$1 ;;
+        --trim_nextseq )        trim_nextseq=true ;;
+        --subset_fq )           shift && subset_fq=$1 ;;
+        --container_dir )       shift && container_dir=$1 ;;
+        --more_args )           shift && more_args=$1 ;;
         -config )               shift && config_file=$1 ;;
         -profile )              shift && profile=$1 ;;
         -work-dir )             shift && work_dir=$1 ;;
@@ -188,16 +188,16 @@ done
 # ==============================================================================
 [[ "$debug" = true ]] && set -o xtrace
 
-## Check if this is a SLURM job
+# Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-## Load Conda environment
+# Load Conda environment
 [[ "$dryrun" = false ]] && Load_software
 
-## Bash strict settings
+# Bash strict settings
 set -ueo pipefail
 
-## Check input
+# Check input
 [[ "$indir" = "" ]] && Die "Please specify an input dir with -i" "$all_args"
 [[ "$outdir" = "" ]] && Die "Please specify an input dir with -o" "$all_args"
 [[ "$busco_db" = "" ]] && Die "Please specify an BUSCO db name with --busco_db" "$all_args"
@@ -205,7 +205,7 @@ set -ueo pipefail
 [[ "$contam" = "" ]] && Die "Please specify a list of contaminant taxa --contam" "$all_args"
 [[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 
-## Get the OSC config file
+# Get the OSC config file
 if [[ ! -f "$osc_config" ]]; then
     osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
     if [[ ! -f $(basename "$OSC_CONFIG_URL") ]]; then
@@ -213,22 +213,21 @@ if [[ ! -f "$osc_config" ]]; then
     fi
 fi
 
-## Define trace output dir
+# Define trace output dir
 trace_dir="$outdir"/pipeline_info
 
-## Build the config argument
+# Build the config argument
 config_arg="-c $osc_config"
-if [[ "$config_file" != "" ]]; then
-    config_arg="$config_arg -c ${config_file/,/ -c }"
-fi
+[[ "$config_file" != "" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
-## Build other Nextflow arguments
+# Build other Nextflow arguments
 [[ "$resume" = false ]] && resume_arg=""
 [[ "$subset_fq" != "" ]] && subset_arg="--subset_fq $subset_fq"
 [[ "$trim_nextseq" = true ]] && nextseq_arg="--trim_nextseq"
 [[ "$ref_fasta" != "" ]] && ref_arg="--ref_fasta $ref_fasta"
+[[ "$work_dir" != "" ]] && work_dir_arg="-work-dir $work_dir"
 
-## Report
+# Report
 echo
 echo "=========================================================================="
 echo "                         STARTING SCRIPT NF_TRAM.SH"
@@ -263,16 +262,16 @@ echo
 # ==============================================================================
 #                               RUN
 # ==============================================================================
-## Make necessary dirs
-${e}mkdir -p "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
+# Make necessary dirs
+${e}mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 
-## Remove old trace files
+# Remove old trace files
 [[ -f "$trace_dir"/report.html ]] && ${e}rm "$trace_dir"/report.html
 [[ -f "$trace_dir"/trace.txt ]] && ${e}rm "$trace_dir"/trace.txt
 [[ -f "$trace_dir"/timeline.html ]] && ${e}rm "$trace_dir"/timeline.html
 [[ -f "$trace_dir"/dag.png ]] && ${e}rm "$trace_dir"/dag.png
 
-## Run the workflow
+# Run the workflow
 echo -e "# Starting the workflow...\n"
 
 [[ "$dryrun" = false ]] && set -o xtrace

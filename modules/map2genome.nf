@@ -15,9 +15,9 @@ process MAP2GENOME {
     script:
     """
     star_align.sh \
-        -i ${fq_pair[0]} \
-        -r ${ref_index} \
-        -o .
+        --R1 ${fq_pair[0]} \
+        --index_dir ${ref_index} \
+        --outdir .
     
     cp .command.log logs/slurm-${sample_id}.log
     """

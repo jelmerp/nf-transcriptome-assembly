@@ -3,7 +3,7 @@ process ORNA {
     publishDir "${params.outdir}/orna", mode: 'copy'
 
     input:
-    tuple val(sample_id), path(fq_pair)
+    path fq_pair
 
     output:
     path "orna_out/*fastq.gz", emit: fq
@@ -13,13 +13,14 @@ process ORNA {
     script:
     """
     orna.sh \
-        --R1_in ${fq_pair[0]} \
+        --R1 ${fq_pair[0]} \
         --outdir orna_out
     
     cp .command.log orna_out/logs/slurm-${sample_id}.log
     """
 }
 
+//TODO can probably delete this
 process JOIN_ORNA {
     tag "Combining ORNA output for assembly processes"
     label "local_process"

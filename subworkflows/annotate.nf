@@ -1,9 +1,5 @@
 // Subworkflow to annotate a transcriptome assembly (merged by EviGene)
 
-// Parameters assumed to be passed from main.nf:
-// - entap_config_init
-// ... plus see below
-
 // Process params
 refseq_type = params.entap_refseq_type
 refseq_db = params.entap_refseq_db
@@ -13,11 +9,17 @@ use_tair_db = params.entap_use_tair_db
 swissprot_db = params.entap_swissprot_db
 custom_db = params.entap_custom_db
 
-if (params.entap_config_final != false && params.entap_diamond_db_dir != false) {
-    ch_db_dir = Channel.fromPath(params.entap_diamond_db_dir)
-    ch_final_config = Channel.fromPath(params.entap_config_final)
-    skip_entap_config = true
-    skip_get_protein_dbs = true
+entap_config_init = params.entap_config_init
+entap_config_final = params.entap_config_final
+entap_diamond_db_dir = params.entap_diamond_db_dir
+run_entap_config = true
+get_protein_dbs = false
+
+if (entap_config_final != false && entap_diamond_db_dir != false) {
+    ch_db_dir = Channel.fromPath(entap_diamond_db_dir)
+    ch_final_config = Channel.fromPath(entap_config_final)
+    run_entap_config = false
+    get_protein_dbs = false
 }
 
 // Include modules
@@ -41,7 +43,7 @@ workflow ANNOTATE {
         ch_map2trans = MAP2TRANSCRIPTOME(Assembly_1trans, Reads)
 
         // Get protein reference databases
-        if (skip_get_protein_dbs == false) {
+        if (get_protein_dbs == true) {
             ch_refseq = refseq_db == false ? GET_REFSEQ(refseq_type) : channel.fromPath(refseq_db)
             ch_tair = use_tair_db == true ? GET_TAIR() : channel.empty()
             if (use_nr_db == true) {
@@ -54,8 +56,8 @@ workflow ANNOTATE {
         }
 
         // Configure and run EnTap
-        if (skip_entap_config == false) {
-            ch_entap_conf = ENTAP_CONFIG(params.entap_config_init, ch_ref_dbs_fa)
+        if (run_entap_config == true) {
+            ch_entap_conf = ENTAP_CONFIG(entap_config_init, ch_ref_dbs_fa)
             ch_db_dir = ch_entap_conf.db_dir
             ch_final_config = ch_entap_conf.config
         }

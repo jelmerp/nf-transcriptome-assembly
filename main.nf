@@ -58,12 +58,14 @@ def helpMessage() {
     GENERAL SETTINGS:
         --strandedness          <str>   Sequencing library orientation: 'reverse', 'forward', or 'unstranded' [default: 'reverse']
         --trim_nextseq                  Use TrimGalore/Cutadapt's 'nextseq' option for poly-G trimming [default: don't use]
-        --trim_qual             <int>   TrimGalore Phred min. base quality score                [default: 5]
-        --trim_len              <int>   TrimGalore min. read length                             [default: 36]
+        --trim_qual             <int>   TrimGalore Phred min. base quality score                [default: 30]
+        --trim_len              <int>   TrimGalore min. read length                             [default: 50]
         --nfiles_rcorr          <int>   Number of files to run Rcorrector with at a time        [default: 20 (=10 PE samples)]
         --kraken_db_url         <URL>   URL to a Kraken database/index from https://benlangmead.github.io/aws-indexes/k2
                                             [default: https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20220926.tar.gz]
         --kraken_db_dir         <dir>   Path to a local Kraken database dir                     [default: none]
+        --nfiles_assembly   #TODO
+        --norms             #TODO
         --k_transabyss          <str>   Comma-separated list of kmer-values for TransAbyss      [default: '21,25,31,35,45,55,65,75,85']
         --k_spades              <str>   Comma-separated list of kmer-values for SPAdes          [default: '55,75,"auto"']
         --min_contig_length     <int>   Minimum contig length (for TransAbyss and Trinity)      [default: 300]
@@ -109,6 +111,7 @@ log.info ""
 // Process paramaters
 k_abyss = params.k_abyss?.split(',') as List // See https://github.com/nextflow-io/nextflow/discussions/2821
 k_spades = params.k_spades?.split(',') as List
+norms = params.norms?.split(',') as List
 
 // Determine what to run
 skip_qc_reads = false
@@ -186,8 +189,8 @@ workflow {
     // Transcriptome assembly
     if (skip_assembly == false) {
         ASSEMBLY(reads_norm, reads_nonorm, k_abyss, k_spades)
-        assembly_1trans = ASSEMBLY.out.1trans
-        assembly_alltrans = ASSEMBLY.out.alltrans
+        assembly_1trans = ASSEMBLY.out.assembly_1trans
+        assembly_alltrans = ASSEMBLY.out.assembly_alltrans
     }
 
     // Assembly QC
