@@ -1,11 +1,12 @@
 #!/bin/bash
 
 #SBATCH --account=PAS0471
-#SBATCH --time=48:00:00
+#SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --mail-type=END,FAIL
 #SBATCH --job-name=nf_tram
 #SBATCH --output=slurm-nf_tram-%j.out
 
@@ -28,7 +29,7 @@ Print_help() {
     echo
     echo "OTHER INPUT DATA OPTIONS:"
     echo "  -q/--fq_pattern <str>   FASTQ file pattern (in single quotes)                   [default: '*_R{1,2}*.fastq.gz']"
-    echo "  --ref_fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
+    echo "  --genome_fasta     <file>  Genome FASTA file for Trinity ref-guided assembly       [default: none]"
     echo "  --subset_fq     <int>   Subset (subsample) FASTQ files to <int> reads           [default: use all reads]"
     echo
     echo "OTHER KEY OPTIONS:"
@@ -49,6 +50,7 @@ Print_help() {
     echo "                            - Settings in this file will override default settings"
     echo "                            - Note that the mcic-scripts OSC config file will always be included, too"
     echo "                              (https://github.com/mcic-osu/mcic-scripts/blob/main/nextflow/osc.config)"
+    echo "  -ansi-log"
     echo
     echo "UTILITY OPTIONS:"
     echo "  --dryrun                Dry run: don't execute commands, only parse arguments and report"
@@ -62,17 +64,21 @@ Print_help() {
 
 # Load the software
 Load_software() {
+    set +u
+
     # Load OSC's Conda module
     module load miniconda3/4.12.0-py39
 
     # Activate the Nextflow Conda environment
-    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate; done
+    [[ -n "$CONDA_SHLVL" ]] && for i in $(seq "${CONDA_SHLVL}"); do source deactivate 2>/dev/null; done
     source activate /fs/project/PAS0471/jelmer/conda/nextflow
 
     ## Singularity container dir - any downloaded containers will be stored here
     export NXF_SINGULARITY_CACHEDIR="$container_dir"
     # Limit memory for Nextflow main process - see https://www.nextflow.io/blog/2021/5_tips_for_hpc_users.html
     export NXF_OPTS='-Xms1g -Xmx4g'
+
+    set -u
 }
 
 # Print help for the focal program
@@ -84,8 +90,7 @@ Print_help_workflow() {
 # Print SLURM job resource usage info
 Resource_usage() {
     echo
-    ${e}sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime,MaxVMSize | \
-        grep -Ev "ba|ex"
+    sacct -j "$SLURM_JOB_ID" -o JobID,AllocTRES%60,Elapsed,CPUTime | grep -Ev "ba|ex"
     echo
 }
 
@@ -131,6 +136,7 @@ profile="conda,normal"
 resume=true && resume_arg="-resume"
 trim_nextseq=false && nextseq_arg=""
 kraken_db_url="https://genome-idx.s3.amazonaws.com/kraken/k2_standard_20220926.tar.gz"
+ansi_log=false && ansi_log_arg="-ansi-log false"
 
 debug=false
 dryrun=false && e=""
@@ -150,7 +156,7 @@ config_file="" && config_arg=""
 more_args=""
 work_dir="" && work_dir_arg=""
 subset_fq="" && subset_arg=""
-ref_fasta="" && ref_arg=""
+genome_fasta="" && ref_arg=""
 
 # Parse command-line options
 all_args="$*"
@@ -163,7 +169,7 @@ while [ "$1" != "" ]; do
         --busco_db )            shift && busco_db=$1 ;;
         --taxon )               shift && taxon=$1 ;;
         --contam )              shift && contam=$1 ;;
-        --ref_fasta )           shift && ref_fasta=$1 ;;
+        --genome_fasta )        shift && genome_fasta=$1 ;;
         --kraken_db_url )       shift && kraken_db_url=$1 ;;
         --trim_nextseq )        trim_nextseq=true ;;
         --subset_fq )           shift && subset_fq=$1 ;;
@@ -172,6 +178,7 @@ while [ "$1" != "" ]; do
         -config )               shift && config_file=$1 ;;
         -profile )              shift && profile=$1 ;;
         -work-dir )             shift && work_dir=$1 ;;
+        -ansi-log )             ansi_log=true ;;
         -no-resume )            resume=false ;;
         --debug )               debug=true ;;
         --dryrun )              dryrun=true && e="echo ";;
@@ -186,16 +193,16 @@ done
 # ==============================================================================
 #                          OTHER SETUP
 # ==============================================================================
-[[ "$debug" = true ]] && set -o xtrace
-
 # Check if this is a SLURM job
 [[ -z "$SLURM_JOB_ID" ]] && slurm=false
 
-# Load Conda environment
-[[ "$dryrun" = false ]] && Load_software
-
 # Bash strict settings
 set -ueo pipefail
+
+[[ "$debug" = true ]] && set -o xtrace
+
+# Load Conda environment
+[[ "$dryrun" = false ]] && Load_software
 
 # Check input
 [[ "$indir" = "" ]] && Die "Please specify an input dir with -i" "$all_args"
@@ -205,27 +212,21 @@ set -ueo pipefail
 [[ "$contam" = "" ]] && Die "Please specify a list of contaminant taxa --contam" "$all_args"
 [[ ! -d "$indir" ]] && Die "Input dir $indir does not exist"
 
-# Get the OSC config file
-if [[ ! -f "$osc_config" ]]; then
-    osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
-    if [[ ! -f $(basename "$OSC_CONFIG_URL") ]]; then
-        wget -q -O "$osc_config" "$OSC_CONFIG_URL"
-    fi
-fi
+# Build the config argument
+[[ ! -f "$osc_config" ]] && osc_config="$outdir"/$(basename "$OSC_CONFIG_URL")
+config_arg="-c $osc_config"
+[[ "$config_file" != "" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
 # Define trace output dir
 trace_dir="$outdir"/pipeline_info
-
-# Build the config argument
-config_arg="-c $osc_config"
-[[ "$config_file" != "" ]] && config_arg="$config_arg -c ${config_file/,/ -c }"
 
 # Build other Nextflow arguments
 [[ "$resume" = false ]] && resume_arg=""
 [[ "$subset_fq" != "" ]] && subset_arg="--subset_fq $subset_fq"
 [[ "$trim_nextseq" = true ]] && nextseq_arg="--trim_nextseq"
-[[ "$ref_fasta" != "" ]] && ref_arg="--ref_fasta $ref_fasta"
+[[ "$genome_fasta" != "" ]] && ref_arg="--genome_fasta $genome_fasta"
 [[ "$work_dir" != "" ]] && work_dir_arg="-work-dir $work_dir"
+[[ "$ansi_log" = true ]] && ansi_log_arg="" 
 
 # Report
 echo
@@ -233,11 +234,13 @@ echo "==========================================================================
 echo "                         STARTING SCRIPT NF_TRAM.SH"
 date
 echo "=========================================================================="
+echo "All arguments passed to this script: $all_args"
+echo
 echo "INPUT/OUTPUT DATA OPTIONS:"
 echo "  Input dir:                       $indir"
 echo "  FASTQ pattern:                   $fq_pattern"
 echo "  Output dir:                      $outdir"
-[[ "$ref_fasta" != "" ]] && echo "  Reference genome FASTA:          $ref_fasta"
+[[ "$genome_fasta" != "" ]] && echo "  Reference genome FASTA:          $genome_fasta"
 [[ "$subset_fq" != "" ]] && echo "  Nr. of reads to subset FASTQ to: $subset_fq"
 echo
 echo "RUN SETTINGS:"
@@ -254,6 +257,7 @@ echo "  Nextflow workflow file:          $nf_file"
 echo "  Work (scratch) dir:              $work_dir"
 echo "  Container dir:                   $container_dir"
 echo "  Config 'profile':                $profile"
+echo "  Config argument:                 $config_arg"
 [[ "$config_file" != "" ]] && echo "  Additional config file:          $config_file"
 [[ $dryrun = true ]] && echo -e "\nTHIS IS A DRY-RUN"
 echo "=========================================================================="
@@ -271,11 +275,11 @@ ${e}mkdir -pv "$work_dir" "$container_dir" "$outdir"/logs "$trace_dir"
 [[ -f "$trace_dir"/timeline.html ]] && ${e}rm "$trace_dir"/timeline.html
 [[ -f "$trace_dir"/dag.png ]] && ${e}rm "$trace_dir"/dag.png
 
+# Get the OSC config file
+[[ ! -f $(basename "$OSC_CONFIG_URL") ]] && wget -q -O "$osc_config" "$OSC_CONFIG_URL"
+
 # Run the workflow
-echo -e "# Starting the workflow...\n"
-
-[[ "$dryrun" = false ]] && set -o xtrace
-
+echo -e "\n# Starting the workflow...\n"
 ${e}Time nextflow run \
         "$nf_file" \
         --reads "$indir/$fq_pattern" \
@@ -284,12 +288,12 @@ ${e}Time nextflow run \
         --kraken_db_url "$kraken_db_url" \
         --entap_taxon "$taxon" \
         --entap_contam "$contam" \
-        -ansi-log false \
         -with-report "$trace_dir"/report.html \
         -with-trace "$trace_dir"/trace.txt \
         -with-timeline "$trace_dir"/timeline.html \
         -with-dag "$trace_dir"/dag.png \
         -profile "$profile" \
+        $ansi_log_arg \
         $nextseq_arg \
         $work_dir_arg \
         $ref_arg \
@@ -297,8 +301,6 @@ ${e}Time nextflow run \
         $config_arg \
         $resume_arg \
         $more_args
-
-[[ "$debug" = false ]] && set +o xtrace
 
 
 # ==============================================================================

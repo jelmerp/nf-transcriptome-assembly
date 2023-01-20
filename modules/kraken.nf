@@ -7,7 +7,7 @@ process KRAKEN {
     path kraken_db_dir
 
     output:
-    tuple val(sample_id), path("unclassified/*fastq.gz"), emit: fq
+    tuple val(sample_id), path("unclassified/*fastq.gz"), emit: fq //No longer used
     path "unclassified/*fastq.gz", emit: fq_list
     path "classified/*fastq.gz", emit: fq_classified
     tuple val(sample_id), path("*main.txt"), emit: main
@@ -26,22 +26,5 @@ process KRAKEN {
         --confidence 0.5
     
     cp .command.log logs/slurm-${sample_id}.log
-    """
-}
-
-process JOIN_KRAKEN {
-    tag "Combining Kraken output for assembly processes"
-    label "local_process"
-
-    input:
-    path kraken_fastqs
-
-    output:
-    path "kraken_fastqs_all"
-
-    script:
-    """
-    mkdir kraken_fastqs_all
-    mv -v $kraken_fastqs kraken_fastqs_all
     """
 }

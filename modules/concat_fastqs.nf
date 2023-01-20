@@ -2,7 +2,7 @@ process CONCAT_FASTQS {
     tag "Concatenate all FASTQ files"
 
     input:
-    path fastqs
+    tuple val(sample_id), path(fq_pair)
 
     output:
     path "*fastq.gz", emit: fq
@@ -11,7 +11,9 @@ process CONCAT_FASTQS {
 
     script:
     """
-    fqcat.sh --outdir . ${fastqs}
+    fqcat.sh \
+        --outdir .
+        ${fq_pair}
 
     cp .command.log logs/slurm.log
     """

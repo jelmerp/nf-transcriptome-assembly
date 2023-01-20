@@ -4,8 +4,8 @@ process ENTAP {
 
     input:
     path assembly
-    path db_dir
     path config
+    path diamond_dbs
     path bam
 
     output:
@@ -17,9 +17,9 @@ process ENTAP {
     entap.sh \
         --assembly ${assembly} \
         --config ${config} \
-        --db-dir ${db_dir} \
         --bam ${bam} \
-        --outdir entap
+        --outdir entap \
+        ${diamond_dbs}
 
     cp .command.log entap/logs/slurm.log
     """

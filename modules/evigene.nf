@@ -6,8 +6,8 @@ process EVIGENE {
     path concat_assembly
 
     output:
-    path "out/final/evigene_all.fasta", emit: assembly_alltrans
-    path "out/final/evigene_primarytrans.fasta", emit: assembly_1trans
+    path "out/evigene.fasta", emit: assembly_alltrans
+    path "out/evigene_primarytrans.fasta", emit: assembly_1trans
     path "out/okayset", emit: okayset
     path "out/logs/slurm*log", emit: log
     
@@ -15,7 +15,7 @@ process EVIGENE {
     """
     evigene.sh \
         --infile ${concat_assembly} \
-        --outdir out
+        --outfile out/evigene.fasta
 
     cp .command.log out/logs/slurm.log
     """

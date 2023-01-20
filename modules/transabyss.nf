@@ -1,9 +1,9 @@
 process TRANSABYSS {
-    tag "Assembly with Trans-ABySS - kmer $kmer_size - normalization $norm"
+    tag "Trans-ABySS - kmer $kmer_size - norm. $norm"
     publishDir "${params.outdir}/transabyss", mode: 'copy'
 
     input:
-    path dir_with_all_fqs
+    val fq_list
     each kmer_size
     val norm
 
@@ -14,16 +14,19 @@ process TRANSABYSS {
     
     script:
     """
+    echo "$fq_list" | tr "," "\n" | tr -d " ][" | grep . > fofn.txt
+    subset_id=\$(head -n 1 fofn.txt | xargs -I{} basename {} .fastq.gz)
+
     transabyss.sh \
-        --indir ${dir_with_all_fqs} \
+        --fofn fofn.txt \
         --outdir . \
-        --id transabyss_norm${norm}_k${kmer_size} \
+        --id transabyss_norm${norm}_k${kmer_size}_subset\${subset_id} \
         --min_contig_length ${params.min_contig_length} \
         --kmer_size ${kmer_size} \
         --strandedness ${params.strandedness}
     
-    mv -v transabyss_norm${norm}_k${kmer_size}-final.fa transabyss_norm${norm}_k${kmer_size}.fasta
+    mv fofn.txt fofn_norm${norm}_k${kmer_size}_\${subset_id}.txt
 
-    cp .command.log logs/slurm.log
+    cp .command.log logs/slurm_norm${norm}_k${kmer_size}_\${subset_id}.log
     """
 }

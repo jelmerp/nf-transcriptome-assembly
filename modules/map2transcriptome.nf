@@ -3,7 +3,7 @@ process MAP2TRANSCRIPTOME {
 
     input:
     path assembly
-    path dir_with_all_fqs
+    path fq_fofn
 
     output:
     path "map2trans.bam", emit: bam
@@ -14,7 +14,7 @@ process MAP2TRANSCRIPTOME {
     """
     bowtie2.sh \
         --assembly ${assembly} \
-        --fq-dir ${dir_with_all_fqs} \
+        --fq_fofn ${fq_fofn} \
         --bam map2trans.bam
 
     cp .command.log logs/slurm.log

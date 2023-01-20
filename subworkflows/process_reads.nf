@@ -3,19 +3,16 @@
 // Include modules
 include { MULTIQC as MULTIQC_TRIM; MULTIQC as MULTIQC_PRE } from '../modules/multiqc'
 include { TRIMGALORE } from '../modules/trimgalore'
-include { FOFN_CREATE } from '../modules/fofn_create'
+include { FOFN } from '../modules/fofn'
 include { RCORRECTOR } from '../modules/rcorrector'
 include { RCORRFILTER } from '../modules/rcorrfilter'
 include { SORTMERNA } from '../modules/sortmerna'
 include { GET_KRAKEN_DB } from '../modules/get_kraken_db'
-include { KRAKEN; JOIN_KRAKEN } from '../modules/kraken'
+include { KRAKEN } from '../modules/kraken'
 include { KRONA } from '../modules/krona'
-include { ORNA; JOIN_ORNA } from '../modules/orna'
-include { CONCAT_FASTQS } from '../modules/concat_fastqs'
+include { MV_IN_1DIR } from '../modules/mv_in_1dir'
 
 // Process params
-assemble_norm = params.skip_assemble_norm == true ? false : true
-assemble_nonorm = params.skip_assemble_nonorm == true ? false : true
 nfiles = params.nfiles_rcorr
 kraken_db_url = params.kraken_db_url
 kraken_db_dir = params.kraken_db_dir
@@ -31,7 +28,7 @@ workflow PROCESS_READS {
         MULTIQC_TRIM(ch_trim.fqc_zip.mix(ch_trim.trim_report).collect(), "multiqc_trimmed.html")
 
         // Read correction with Rcorrector
-        ch_trim_all = FOFN_CREATE(ch_trim.fq_trimmed.collect().flatten().collect())
+        ch_trim_all = FOFN(ch_trim.fq_trimmed.collect().flatten().collect(), "fastq.gz")
         ch_rcorr = RCORRECTOR(ch_trim_all.splitText(by: nfiles)) // Run with nfiles_rcorr files per time
 
         ch_rcorr = ch_rcorr.fq             // Get reads back into by-sample tuple format
@@ -51,23 +48,12 @@ workflow PROCESS_READS {
         }
         ch_kraken = KRAKEN(ch_sortmerna.fq_unmapped, ch_kraken_db)
         
+        // Plot Kraken output with Krona
         KRONA(ch_kraken.main)
         
+        // Run MultiQC on the output of all previous tools
         MULTIQC_PRE(ch_kraken.report.mix(ch_sortmerna.log).collect(), "multiqc_preprocess")
-
-        // Read normalization with ORNA
-        if (assemble_norm == true) {
-            ch_concat = CONCAT_FASTQS(ch_kraken.fq.collect())
-            ch_orna = ORNA(ch_concat.fq)
-        }
-
-        // Get channels with all preprocessed FASTQ files in one dir
-        ch_normreads = channel.empty()
-        ch_nonormreads = channel.empty()
-        if (assemble_norm == true) ch_normreads = JOIN_ORNA(ch_orna.fq.collect())
-        if (assemble_nonorm == true) ch_nonormreads = JOIN_KRAKEN(ch_kraken.fq_list.collect())
     
     emit:
-        reads_norm = ch_normreads
-        reads_nonorm = ch_nonormreads
+        reads = ch_kraken.fq
 }

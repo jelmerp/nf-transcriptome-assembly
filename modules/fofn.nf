@@ -11,6 +11,6 @@ process FOFN {
 
     script:
     """
-    echo ${filenames} | tr "," "\n" | tr -d " ][" | grep "${pattern}" | sort > fofn.txt.txt
+    echo ${filenames} | tr "," "\n" | tr -d " ][" | grep "${pattern}" | sort > fofn.txt
     """
 }

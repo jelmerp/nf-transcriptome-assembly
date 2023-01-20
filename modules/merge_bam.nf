@@ -1,5 +1,4 @@
 process MERGE_BAM {
-    tag "Merge BAM files for genome-guided assembly"
     publishDir "${params.outdir}/map2genome", mode: 'copy'
 
     input:

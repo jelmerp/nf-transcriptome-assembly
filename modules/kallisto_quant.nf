@@ -8,8 +8,8 @@ process KALLISTO_QUANT {
     path assembly_index
 
     output:
-    path "*abundance.h5", emit: counts_h5
-    path "*abundance.tsv", emit: counts_tsv
+    path "${sample_id}/*abundance.h5", emit: counts_h5
+    path "${sample_id}/*abundance.tsv", emit: counts_tsv
     path "${sample_id}/logs/slurm*log", emit: log
     
     script:
