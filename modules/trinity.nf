@@ -22,7 +22,7 @@ process TRINITY {
 
     trinity.sh \
         --fofn fofn.txt \
-        --outdir trinity_out \
+        --outfile trinity_out/trinity_norm${norm}_subset\${subset_id}.fasta \
         --normalize false \
         --min_contig_length ${params.min_contig_length} \
         --strandedness ${params.strandedness}

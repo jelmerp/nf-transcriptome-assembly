@@ -19,8 +19,7 @@ process TRANSABYSS {
 
     transabyss.sh \
         --fofn fofn.txt \
-        --outdir . \
-        --id transabyss_norm${norm}_k${kmer_size}_subset\${subset_id} \
+        --outfile transabyss_norm${norm}_k${kmer_size}_subset\${subset_id}.fasta \
         --min_contig_length ${params.min_contig_length} \
         --kmer_size ${kmer_size} \
         --strandedness ${params.strandedness}
