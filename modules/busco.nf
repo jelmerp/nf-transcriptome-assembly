@@ -16,6 +16,7 @@ process BUSCO {
     busco.sh \
         --infile ${assembly} \
         --db ${busco_db} \
+        --mode transcriptome \
         --outdir .
 
     cp .command.log logs/slurm.log
